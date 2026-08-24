@@ -1,5 +1,12 @@
 # Orquestra de Pagamentos
 
+[![CI](https://github.com/Mateusmith/orquestra-pagamentos/actions/workflows/integracao-continua.yml/badge.svg)](https://github.com/Mateusmith/orquestra-pagamentos/actions/workflows/integracao-continua.yml)
+[![Java 25](https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/25/)
+[![Spring Boot 4.1](https://img.shields.io/badge/Spring%20Boot-4.1.1-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
+[![Apache Kafka 4.1](https://img.shields.io/badge/Apache%20Kafka-4.1.2-231F20?logo=apachekafka&logoColor=white)](https://kafka.apache.org/)
+[![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![License MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Orquestra de Pagamentos é uma plataforma distribuída de checkout e pagamentos. Ela coordena reserva de estoque, análise de risco, autorização financeira, escrituração contábil e notificação sem depender de uma transação única entre bancos e sem repetir efeitos quando uma mensagem é entregue novamente.
 
 O projeto demonstra problemas que aparecem em sistemas reais: consistência eventual, idempotência, compensação, concorrência, indisponibilidade de terceiros, isolamento entre empresas e rastreamento de uma operação através de vários microsserviços. A política de risco é externa e validada, permitindo ajustar limites e pontuações sem recompilar o serviço.
