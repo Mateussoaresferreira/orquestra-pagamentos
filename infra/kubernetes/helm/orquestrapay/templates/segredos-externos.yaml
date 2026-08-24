@@ -1,0 +1,81 @@
+{{- if .Values.segredos.externos.habilitado }}
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: orquestrapay-aws
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+spec:
+  provider:
+    aws:
+      service: SecretsManager
+      region: {{ .Values.segredos.externos.regiao }}
+      auth:
+        jwt:
+          serviceAccountRef:
+            name: {{ .Values.global.contaServico.segredosNome }}
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: orquestrapay-segredos
+  annotations:
+    argocd.argoproj.io/sync-wave: "-9"
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: orquestrapay-aws
+    kind: SecretStore
+  target:
+    name: {{ .Values.global.banco.segredo }}
+    creationPolicy: Owner
+  data:
+    - secretKey: banco-usuario-mestre
+      remoteRef:
+        key: {{ .Values.segredos.externos.bancoArn }}
+        property: username
+    - secretKey: banco-senha-mestre
+      remoteRef:
+        key: {{ .Values.segredos.externos.bancoArn }}
+        property: password
+    - secretKey: banco-checkout-senha
+      remoteRef:
+        key: {{ .Values.segredos.externos.aplicacaoArn }}
+        property: banco-checkout-senha
+    - secretKey: banco-estoque-senha
+      remoteRef:
+        key: {{ .Values.segredos.externos.aplicacaoArn }}
+        property: banco-estoque-senha
+    - secretKey: banco-risco-senha
+      remoteRef:
+        key: {{ .Values.segredos.externos.aplicacaoArn }}
+        property: banco-risco-senha
+    - secretKey: banco-pagamento-senha
+      remoteRef:
+        key: {{ .Values.segredos.externos.aplicacaoArn }}
+        property: banco-pagamento-senha
+    - secretKey: banco-razao-senha
+      remoteRef:
+        key: {{ .Values.segredos.externos.aplicacaoArn }}
+        property: banco-razao-senha
+    - secretKey: banco-notificacao-senha
+      remoteRef:
+        key: {{ .Values.segredos.externos.aplicacaoArn }}
+        property: banco-notificacao-senha
+    - secretKey: banco-registro-senha
+      remoteRef:
+        key: {{ .Values.segredos.externos.aplicacaoArn }}
+        property: banco-registro-senha
+    - secretKey: redis-senha
+      remoteRef:
+        key: {{ .Values.segredos.externos.aplicacaoArn }}
+        property: redis-senha
+    - secretKey: chave-criptografia-token
+      remoteRef:
+        key: {{ .Values.segredos.externos.aplicacaoArn }}
+        property: chave-criptografia-token
+    - secretKey: chave-api-provedor
+      remoteRef:
+        key: {{ .Values.segredos.externos.aplicacaoArn }}
+        property: chave-api-provedor
+{{- end }}

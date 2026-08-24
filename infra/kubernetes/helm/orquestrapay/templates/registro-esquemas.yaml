@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registro-esquemas
+  labels:
+    app.kubernetes.io/name: registro-esquemas
+    {{- include "orquestrapay.rotulos" . | nindent 4 }}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app.kubernetes.io/name: registro-esquemas }
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: registro-esquemas
+        {{- include "orquestrapay.rotulos" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Values.global.contaServico.semAwsNome }}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: registro-esquemas
+          image: {{ .Values.global.registroEsquemas.imagem }}
+          ports: [{ name: http, containerPort: 8080 }]
+          env:
+            - { name: APICURIO_STORAGE_KIND, value: sql }
+            - { name: APICURIO_STORAGE_SQL_KIND, value: postgresql }
+            - name: APICURIO_DATASOURCE_URL
+              value: "jdbc:postgresql://{{ .Values.global.banco.host }}:{{ .Values.global.banco.porta }}/orquestrapay_registro?sslmode=require"
+            - name: APICURIO_DATASOURCE_USERNAME
+              value: {{ .Values.global.registroEsquemas.bancoUsuario | quote }}
+            - name: APICURIO_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: {{ .Values.global.banco.segredo }}, key: {{ .Values.global.registroEsquemas.bancoSenhaChave }} }
+          readinessProbe:
+            httpGet: { path: /health/ready, port: http }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 200m, memory: 512Mi }
+            limits: { cpu: "1", memory: 1Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: temporarios, mountPath: /tmp }
+      volumes:
+        - name: temporarios
+          emptyDir:
+            sizeLimit: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: registro-esquemas
+spec:
+  selector: { app.kubernetes.io/name: registro-esquemas }
+  ports: [{ name: http, port: 8080, targetPort: http }]

@@ -1,0 +1,460 @@
+name: orquestrapay
+
+x-postgres-environment: &postgres-environment
+  POSTGRES_USER: orquestrapay
+  POSTGRES_PASSWORD: orquestrapay
+  TZ: UTC
+
+x-service-environment: &service-environment
+  PORTA: 8080
+  BANCO_USUARIO: orquestrapay
+  BANCO_SENHA: orquestrapay
+  CHAVE_CRIPTOGRAFIA_TOKEN: ${CHAVE_CRIPTOGRAFIA_TOKEN:?Execute scripts/iniciar.ps1 para gerar os segredos locais}
+  KAFKA_SERVIDORES: kafka:29092
+  REGISTRO_ESQUEMAS_URL: http://registro-esquemas:8080/apis/registry/v3
+  REGISTRO_AUTO_CADASTRAR: "true"
+  TOPICO_SAGA: orquestrapay.saga.v1
+  SEGURANCA_HABILITADA: "false"
+  OIDC_EMISSOR: ${OIDC_EMISSOR:-}
+  OIDC_CLIENTE_ID: ${OIDC_CLIENTE_ID:-}
+  SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-}
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://coletor-otel:4318
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+  OTEL_PROPAGATORS: tracecontext,baggage
+  MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
+  SPRING_KAFKA_LISTENER_OBSERVATION_ENABLED: "true"
+  SPRING_KAFKA_TEMPLATE_OBSERVATION_ENABLED: "true"
+  JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
+
+x-service-defaults: &service-defaults
+  networks: [orquestrapay]
+  labels:
+    com.orquestrapay.observavel: "true"
+  healthcheck:
+    test: ["CMD-SHELL", "wget -q -T 3 -O /dev/null http://localhost:8080/actuator/health/readiness || exit 1"]
+    interval: 10s
+    timeout: 3s
+    start_period: 300s
+    retries: 12
+  deploy:
+    resources:
+      limits:
+        memory: 512M
+
+services:
+  banco-checkout:
+    image: postgres:17-alpine
+    environment:
+      <<: *postgres-environment
+      POSTGRES_DB: orquestrapay_checkout
+    ports: ["127.0.0.1:5433:5432"]
+    volumes: ["dados_checkout:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orquestrapay -d orquestrapay_checkout"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [orquestrapay]
+
+  banco-estoque:
+    image: postgres:17-alpine
+    environment:
+      <<: *postgres-environment
+      POSTGRES_DB: orquestrapay_estoque
+    ports: ["127.0.0.1:5434:5432"]
+    volumes: ["dados_estoque:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orquestrapay -d orquestrapay_estoque"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [orquestrapay]
+
+  banco-risco:
+    image: postgres:17-alpine
+    environment:
+      <<: *postgres-environment
+      POSTGRES_DB: orquestrapay_risco
+    ports: ["127.0.0.1:5435:5432"]
+    volumes: ["dados_risco:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orquestrapay -d orquestrapay_risco"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [orquestrapay]
+
+  banco-pagamento:
+    image: postgres:17-alpine
+    environment:
+      <<: *postgres-environment
+      POSTGRES_DB: orquestrapay_pagamento
+    ports: ["127.0.0.1:5436:5432"]
+    volumes: ["dados_pagamento:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orquestrapay -d orquestrapay_pagamento"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [orquestrapay]
+
+  banco-razao:
+    image: postgres:17-alpine
+    environment:
+      <<: *postgres-environment
+      POSTGRES_DB: orquestrapay_razao
+    ports: ["127.0.0.1:5437:5432"]
+    volumes: ["dados_razao:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orquestrapay -d orquestrapay_razao"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [orquestrapay]
+
+  banco-notificacao:
+    image: postgres:17-alpine
+    environment:
+      <<: *postgres-environment
+      POSTGRES_DB: orquestrapay_notificacao
+    ports: ["127.0.0.1:5438:5432"]
+    volumes: ["dados_notificacao:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orquestrapay -d orquestrapay_notificacao"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [orquestrapay]
+
+  banco-registro:
+    image: postgres:17-alpine
+    environment:
+      <<: *postgres-environment
+      POSTGRES_DB: orquestrapay_registro
+    ports: ["127.0.0.1:5439:5432"]
+    volumes: ["dados_registro:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orquestrapay -d orquestrapay_registro"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [orquestrapay]
+
+  redis:
+    image: redis:8.2-alpine
+    environment:
+      REDIS_SENHA: ${REDIS_SENHA:?Execute scripts/iniciar.ps1 para gerar os segredos locais}
+    command:
+      - sh
+      - -c
+      - >-
+        exec redis-server --appendonly yes --maxmemory 128mb
+        --maxmemory-policy allkeys-lru --requirepass "$${REDIS_SENHA}"
+    ports: ["127.0.0.1:6379:6379"]
+    volumes: ["dados_redis:/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$${REDIS_SENHA}\" ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [orquestrapay]
+
+  kafka:
+    image: apache/kafka:4.1.2
+    hostname: kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:29092,CONTROLLER://:29093,PLAINTEXT_HOST://:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 12
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    ports: ["127.0.0.1:9092:9092"]
+    volumes: ["dados_kafka:/var/lib/kafka/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/29092'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks: [orquestrapay]
+
+  criador-topicos:
+    image: apache/kafka:4.1.2
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command:
+      - /bin/bash
+      - -c
+      - >-
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092
+        --create --if-not-exists --topic orquestrapay.saga.v1
+        --partitions 12 --replication-factor 1 &&
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092
+        --create --if-not-exists --topic orquestrapay.saga.v1.dlt
+        --partitions 12 --replication-factor 1
+    networks: [orquestrapay]
+
+  registro-esquemas:
+    image: apicurio/apicurio-registry:3.3.1
+    environment:
+      APICURIO_STORAGE_KIND: sql
+      APICURIO_STORAGE_SQL_KIND: postgresql
+      APICURIO_DATASOURCE_URL: jdbc:postgresql://banco-registro:5432/orquestrapay_registro
+      APICURIO_DATASOURCE_USERNAME: orquestrapay
+      APICURIO_DATASOURCE_PASSWORD: orquestrapay
+    ports: ["127.0.0.1:8088:8080"]
+    depends_on:
+      banco-registro:
+        condition: service_healthy
+    networks: [orquestrapay]
+
+  simulador-provedor:
+    <<: *service-defaults
+    image: orquestrapay/simulador-provedor:local
+    build:
+      context: ./support/provider-simulator
+      dockerfile: ../../docker/Dockerfile
+      args:
+        CAMINHO_ARTEFATO: target/simulador-provedor-0.1.0-SNAPSHOT.jar
+    environment:
+      PORTA: 8080
+      JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://coletor-otel:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_SERVICE_NAME: simulador-provedor
+      MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
+      MANAGEMENT_METRICS_TAGS_APPLICATION: simulador-provedor
+      PROVEDOR_CHAVE_API: ${PROVEDOR_CHAVE_API:?Execute scripts/iniciar.ps1 para gerar os segredos locais}
+    ports: ["127.0.0.1:8090:8080"]
+
+  servico-checkout:
+    <<: *service-defaults
+    image: orquestrapay/servico-checkout:local
+    build:
+      context: ./services/checkout-service
+      dockerfile: ../../docker/Dockerfile
+      args:
+        CAMINHO_ARTEFATO: target/servico-checkout-0.1.0-SNAPSHOT.jar
+    environment:
+      <<: *service-environment
+      BANCO_URL: jdbc:postgresql://banco-checkout:5432/orquestrapay_checkout
+      REDIS_HOST: redis
+      REDIS_PORTA: 6379
+      REDIS_SENHA: ${REDIS_SENHA:?Execute scripts/iniciar.ps1 para gerar os segredos locais}
+      OTEL_SERVICE_NAME: servico-checkout
+      MANAGEMENT_METRICS_TAGS_APPLICATION: servico-checkout
+    ports: ["127.0.0.1:8080:8080"]
+    depends_on:
+      banco-checkout: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+      criador-topicos: {condition: service_completed_successfully}
+      registro-esquemas: {condition: service_started}
+
+  servico-estoque:
+    <<: *service-defaults
+    image: orquestrapay/servico-estoque:local
+    build:
+      context: ./services/inventory-service
+      dockerfile: ../../docker/Dockerfile
+      args:
+        CAMINHO_ARTEFATO: target/servico-estoque-0.1.0-SNAPSHOT.jar
+    environment:
+      <<: *service-environment
+      BANCO_URL: jdbc:postgresql://banco-estoque:5432/orquestrapay_estoque
+      OTEL_SERVICE_NAME: servico-estoque
+      MANAGEMENT_METRICS_TAGS_APPLICATION: servico-estoque
+    ports: ["127.0.0.1:8081:8080"]
+    depends_on:
+      banco-estoque: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+      criador-topicos: {condition: service_completed_successfully}
+      registro-esquemas: {condition: service_started}
+
+  servico-risco:
+    <<: *service-defaults
+    image: orquestrapay/servico-risco:local
+    build:
+      context: ./services/risk-service
+      dockerfile: ../../docker/Dockerfile
+      args:
+        CAMINHO_ARTEFATO: target/servico-risco-0.1.0-SNAPSHOT.jar
+    environment:
+      <<: *service-environment
+      BANCO_URL: jdbc:postgresql://banco-risco:5432/orquestrapay_risco
+      OTEL_SERVICE_NAME: servico-risco
+      MANAGEMENT_METRICS_TAGS_APPLICATION: servico-risco
+    ports: ["127.0.0.1:8082:8080"]
+    depends_on:
+      banco-risco: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+      criador-topicos: {condition: service_completed_successfully}
+      registro-esquemas: {condition: service_started}
+
+  servico-pagamento:
+    <<: *service-defaults
+    image: orquestrapay/servico-pagamento:local
+    build:
+      context: ./services/payment-service
+      dockerfile: ../../docker/Dockerfile
+      args:
+        CAMINHO_ARTEFATO: target/servico-pagamento-0.1.0-SNAPSHOT.jar
+    environment:
+      <<: *service-environment
+      BANCO_URL: jdbc:postgresql://banco-pagamento:5432/orquestrapay_pagamento
+      PROVEDOR_URL: http://simulador-provedor:8080
+      PROVEDOR_CHAVE_API: ${PROVEDOR_CHAVE_API:?Execute scripts/iniciar.ps1 para gerar os segredos locais}
+      OTEL_SERVICE_NAME: servico-pagamento
+      MANAGEMENT_METRICS_TAGS_APPLICATION: servico-pagamento
+    ports: ["127.0.0.1:8083:8080"]
+    depends_on:
+      banco-pagamento: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+      criador-topicos: {condition: service_completed_successfully}
+      registro-esquemas: {condition: service_started}
+      simulador-provedor: {condition: service_healthy}
+
+  servico-razao:
+    <<: *service-defaults
+    image: orquestrapay/servico-razao:local
+    build:
+      context: ./services/ledger-service
+      dockerfile: ../../docker/Dockerfile
+      args:
+        CAMINHO_ARTEFATO: target/servico-razao-0.1.0-SNAPSHOT.jar
+    environment:
+      <<: *service-environment
+      BANCO_URL: jdbc:postgresql://banco-razao:5432/orquestrapay_razao
+      OTEL_SERVICE_NAME: servico-razao
+      MANAGEMENT_METRICS_TAGS_APPLICATION: servico-razao
+    ports: ["127.0.0.1:8084:8080"]
+    depends_on:
+      banco-razao: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+      criador-topicos: {condition: service_completed_successfully}
+      registro-esquemas: {condition: service_started}
+
+  servico-notificacao:
+    <<: *service-defaults
+    image: orquestrapay/servico-notificacao:local
+    build:
+      context: ./services/notification-service
+      dockerfile: ../../docker/Dockerfile
+      args:
+        CAMINHO_ARTEFATO: target/servico-notificacao-0.1.0-SNAPSHOT.jar
+    environment:
+      <<: *service-environment
+      BANCO_URL: jdbc:postgresql://banco-notificacao:5432/orquestrapay_notificacao
+      OTEL_SERVICE_NAME: servico-notificacao
+      MANAGEMENT_METRICS_TAGS_APPLICATION: servico-notificacao
+    ports: ["127.0.0.1:8085:8080"]
+    depends_on:
+      banco-notificacao: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+      criador-topicos: {condition: service_completed_successfully}
+      registro-esquemas: {condition: service_started}
+
+  coletor-otel:
+    image: otel/opentelemetry-collector-contrib:0.138.0
+    command: ["--config=/etc/otel/configuracao.yml"]
+    volumes:
+      - ./infra/observability/otel/configuracao.yml:/etc/otel/configuracao.yml:ro
+    ports: ["127.0.0.1:4317:4317", "127.0.0.1:4318:4318"]
+    depends_on: [tempo]
+    networks: [orquestrapay]
+
+  prometheus:
+    image: prom/prometheus:v3.6.0
+    command:
+      - --config.file=/etc/prometheus/configuracao.yml
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-remote-write-receiver
+    volumes:
+      - ./infra/observability/prometheus/configuracao.yml:/etc/prometheus/configuracao.yml:ro
+      - ./infra/observability/prometheus/alertas.yml:/etc/prometheus/alertas.yml:ro
+      - dados_prometheus:/prometheus
+    ports: ["127.0.0.1:9090:9090"]
+    networks: [orquestrapay]
+
+  tempo:
+    image: grafana/tempo:2.8.2
+    command: ["-config.file=/etc/tempo/configuracao.yml"]
+    volumes:
+      - ./infra/observability/tempo/configuracao.yml:/etc/tempo/configuracao.yml:ro
+      - dados_tempo:/var/tempo
+    ports: ["127.0.0.1:3200:3200"]
+    networks: [orquestrapay]
+
+  loki:
+    image: grafana/loki:3.5.5
+    command: ["-config.file=/etc/loki/configuracao.yml"]
+    volumes:
+      - ./infra/observability/loki/configuracao.yml:/etc/loki/configuracao.yml:ro
+      - dados_loki:/loki
+    ports: ["127.0.0.1:3100:3100"]
+    networks: [orquestrapay]
+
+  alloy:
+    image: grafana/alloy:v1.10.0
+    command: ["run", "/etc/alloy/configuracao.alloy", "--server.http.listen-addr=0.0.0.0:12345"]
+    volumes:
+      - ./infra/observability/alloy/configuracao.alloy:/etc/alloy/configuracao.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports: ["127.0.0.1:12345:12345"]
+    depends_on: [loki]
+    networks: [orquestrapay]
+
+  grafana:
+    image: grafana/grafana:12.2.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: orquestrapay
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - dados_grafana:/var/lib/grafana
+    ports: ["127.0.0.1:3010:3000"]
+    depends_on: [prometheus, tempo, loki]
+    networks: [orquestrapay]
+
+  k6:
+    image: grafana/k6:1.3.0
+    profiles: ["carga"]
+    command: ["run", "/testes/carga-checkout.js"]
+    environment:
+      URL_CHECKOUT: http://servico-checkout:8080
+      URL_ESTOQUE: http://servico-estoque:8080
+    volumes:
+      - ./tests/load:/testes:ro
+    networks: [orquestrapay]
+
+networks:
+  orquestrapay:
+    name: orquestrapay
+
+volumes:
+  dados_checkout:
+  dados_estoque:
+  dados_risco:
+  dados_pagamento:
+  dados_razao:
+  dados_notificacao:
+  dados_registro:
+  dados_redis:
+  dados_kafka:
+  dados_prometheus:
+  dados_tempo:
+  dados_loki:
+  dados_grafana:

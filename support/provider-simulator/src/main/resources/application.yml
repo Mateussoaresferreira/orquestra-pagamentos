@@ -1,0 +1,20 @@
+spring:
+  application.name: simulador-provedor
+  threads.virtual.enabled: true
+  main.keep-alive: true
+server:
+  port: ${PORTA:8090}
+  shutdown: graceful
+  max-http-request-header-size: 16KB
+  error:
+    include-message: never
+    include-binding-errors: never
+    include-stacktrace: never
+    include-exception: false
+provedor:
+  autenticacao:
+    chave-api: ${PROVEDOR_CHAVE_API}
+management:
+  endpoints.web.exposure.include: health,info,prometheus,metrics
+  endpoint.health.probes.enabled: true
+  endpoint.health.show-details: never

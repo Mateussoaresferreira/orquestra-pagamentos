@@ -1,0 +1,22 @@
+{{- if .Values.segredos.criar }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Values.global.banco.segredo }}
+  labels:
+    {{- include "orquestrapay.rotulos" . | nindent 4 }}
+type: Opaque
+stringData:
+  banco-usuario-mestre: {{ .Values.segredos.bancoUsuarioMestre | quote }}
+  banco-senha-mestre: {{ .Values.segredos.bancoSenhaMestre | quote }}
+  banco-checkout-senha: {{ .Values.segredos.bancoCheckoutSenha | quote }}
+  banco-estoque-senha: {{ .Values.segredos.bancoEstoqueSenha | quote }}
+  banco-risco-senha: {{ .Values.segredos.bancoRiscoSenha | quote }}
+  banco-pagamento-senha: {{ .Values.segredos.bancoPagamentoSenha | quote }}
+  banco-razao-senha: {{ .Values.segredos.bancoRazaoSenha | quote }}
+  banco-notificacao-senha: {{ .Values.segredos.bancoNotificacaoSenha | quote }}
+  banco-registro-senha: {{ .Values.segredos.bancoRegistroSenha | quote }}
+  redis-senha: {{ .Values.segredos.redisSenha | quote }}
+  chave-criptografia-token: {{ .Values.segredos.chaveCriptografiaToken | quote }}
+  chave-api-provedor: {{ .Values.segredos.chaveApiProvedor | quote }}
+{{- end }}

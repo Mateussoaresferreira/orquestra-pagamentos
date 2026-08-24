@@ -1,0 +1,107 @@
+# Segurança
+
+## Modelo de identidade
+
+Cada API é um OAuth2 Resource Server. Em produção, o token JWT precisa cumprir quatro condições antes de chegar ao domínio:
+
+1. assinatura válida e chave obtida do emissor configurado;
+2. `issuer` igual ao provedor confiável;
+3. `token_use=access`;
+4. `client_id` ou audiência compatível com a aplicação.
+
+Os escopos são convertidos em autoridades Spring. Cada controlador exige a permissão mínima da operação, por exemplo `compras:escrever`, `estoque:ler` ou `pagamentos:conciliar`.
+
+Em produção, somente o estado básico de saúde é anônimo. Swagger exige o papel
+`DESENVOLVEDOR` ou `AUDITOR`, enquanto métricas e demais endpoints do Actuator
+exigem `OBSERVABILIDADE`. O health público nunca inclui detalhes dos componentes.
+
+## Isolamento entre empresas
+
+O claim `custom:empresa_id` identifica a empresa autenticada. Quando a segurança está habilitada, o filtro rejeita:
+
+- token sem empresa;
+- identificador de empresa inválido;
+- `X-Empresa-Id` diferente do claim do token.
+
+Os repositórios incluem `id_empresa` nas consultas externas e nas verificações
+internas de idempotência por compra ou reserva. O cabeçalho local existe para
+testes, não como fonte confiável em produção.
+
+## Proteção de pagamento
+
+O token recebido pelo checkout é cifrado com AES-256-GCM antes da persistência. Cada cifra usa vetor de inicialização aleatório e associa o identificador da compra como dado autenticado. Alterar o conteúdo, reutilizá-lo em outra compra ou usar uma chave errada invalida a descriptografia.
+
+A chave entra por `CHAVE_CRIPTOGRAFIA_TOKEN` e deve vir de um gerenciador de segredos. Ela nunca deve ser registrada em log, imagem ou manifesto versionado.
+
+A aplicação não possui chave de fallback e inicia com JWT habilitado por padrão.
+Somente a bancada local do Compose define explicitamente
+`SEGURANCA_HABILITADA=false` e uma chave descartável para facilitar os testes.
+
+O token permanece cifrado no PostgreSQL, no conteúdo da outbox e durante o
+transporte pelo Kafka. Ele só é revelado em memória pelo serviço de pagamento,
+imediatamente antes da chamada ao provedor. O banco de pagamentos armazena
+somente uma impressão HMAC-SHA-256, derivada da chave mestra com separação de
+contexto, para não permitir testes offline contra tokens previsíveis.
+
+O Redis da bancada local exige senha, e a integração de pagamento envia uma
+chave de API em todas as chamadas ao simulador de provedor. O Helm obtém a
+senha do Redis, a chave criptográfica e a credencial do provedor pelo External Secrets;
+em uma integração real, essa autenticação deve evoluir para OAuth2 máquina a
+máquina ou mTLS conforme o contrato do adquirente.
+
+## Segredos e cloud
+
+- RDS mantém a senha mestre em AWS Secrets Manager e ela é usada somente pelo job de preparação.
+- Cada banco lógico possui usuário e senha próprios; um serviço não recebe a credencial de outro domínio.
+- Um segredo separado contém as senhas dos serviços, a senha do Redis, a chave criptográfica e a credencial do provedor.
+- External Secrets materializa somente os valores necessários no namespace.
+- A conta do External Secrets possui uma função IRSA exclusiva para leitura dos dois segredos.
+- Os consumidores Kafka recebem apenas a função IRSA do MSK; o simulador, o registry e os jobs não recebem permissão AWS.
+- MSK Serverless aceita autenticação IAM; Redis usa TLS e autenticação no perfil cloud.
+- Secrets do EKS e alertas SNS usam chaves KMS administradas pelo projeto, com rotação habilitada.
+- a saída HTTPS de produção passa somente por proxy ou firewall privado informado no Terraform.
+
+## Proteções de API
+
+- validação Bean Validation em todos os corpos de entrada;
+- validação de moedas pelo catálogo ISO 4217 antes de iniciar a saga;
+- restrições `CHECK` no PostgreSQL para estados, moeda, país, quantidades e
+  impressão criptográfica do token;
+- limite de requisições por empresa no checkout usando Redis;
+- limite de 1 MiB para corpos HTTP e 16 KiB para cabeçalhos;
+- chave de idempotência com hash do corpo;
+- respostas de erro no formato Problem Details, sem exceção, mensagem interna,
+  erro de binding ou stack trace;
+- cabeçalho `Cross-Origin-Resource-Policy: same-origin` em todas as respostas;
+- endpoints de Actuator limitados ao necessário;
+- contêiner sem privilégios e sistema de arquivos raiz somente leitura no Helm;
+- políticas de rede: observabilidade acessa métricas, pagamento acessa o provedor
+  e serviços acessam o registry; os demais pares permanecem isolados.
+
+## Ameaças consideradas
+
+| Ameaça | Controle |
+|---|---|
+| Repetição de compra ou cobrança | Idempotency-Key, inbox e identificadores estáveis |
+| Acesso a outra empresa | claim de empresa, filtro e consultas com `id_empresa` |
+| Token JWT emitido para outro cliente | validação de emissor, uso e cliente/audiência |
+| Vazamento do token de pagamento no banco | AES-256-GCM e segredo externo |
+| Evento adulterado ou incompatível | contrato Avro versionado e registry |
+| Terceiro indisponível | timeout, retentativa limitada e circuit breaker |
+| Exaustão do checkout | rate limiting e limites de recursos |
+| Falha silenciosa de consumo | retentativas, quarentena, DLT, métricas e alertas |
+
+## Limites do ambiente local
+
+O Compose usa senhas conhecidas, Kafka sem TLS e APIs sem autenticação. Ele é uma bancada de desenvolvimento e não representa uma configuração segura para exposição pública.
+
+## Antes de produção
+
+- substituir todos os valores de exemplo;
+- fornecer certificado ACM; o Helm recusa ingresso público sem HTTPS e política TLS explícita;
+- restringir origens CORS e redes de saída;
+- definir retenção e mascaramento de dados pessoais;
+- habilitar backup, restauração testada e auditoria de acessos;
+- executar análise de dependências, imagens e testes adversariais;
+- executar o DAST do OWASP ZAP contra o OpenAPI implantado;
+- configurar alarmes com destinatários reais.

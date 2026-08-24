@@ -1,0 +1,52 @@
+spring:
+  application.name: servico-razao
+  threads.virtual.enabled: true
+  main.keep-alive: true
+  datasource:
+    url: ${BANCO_URL:jdbc:postgresql://localhost:5437/orquestrapay_razao}
+    username: ${BANCO_USUARIO:orquestrapay}
+    password: ${BANCO_SENHA}
+  flyway.locations: classpath:db/migration/shared,classpath:db/migration/service
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVIDORES:localhost:9092}
+    consumer:
+      group-id: razao-v1
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: io.apicurio.registry.serde.avro.AvroKafkaDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: io.apicurio.registry.serde.avro.AvroKafkaSerializer
+      acks: all
+    listener.ack-mode: record
+    properties:
+      apicurio.registry.url: ${REGISTRO_ESQUEMAS_URL:http://localhost:8088/apis/registry/v3}
+      apicurio.registry.auto-register: ${REGISTRO_AUTO_CADASTRAR:true}
+      apicurio.registry.use-specific-avro-reader: true
+server:
+  port: ${PORTA:8084}
+  shutdown: graceful
+  max-http-request-header-size: 16KB
+  error:
+    include-message: never
+    include-binding-errors: never
+    include-stacktrace: never
+    include-exception: false
+orquestrapay:
+  seguranca:
+    habilitada: ${SEGURANCA_HABILITADA:true}
+    emissor: ${OIDC_EMISSOR:}
+    cliente-id: ${OIDC_CLIENTE_ID:}
+  eventos:
+    habilitado: true
+    topico: ${TOPICO_SAGA:orquestrapay.saga.v1}
+    intervalo-publicacao: 300
+management:
+  endpoints.web.exposure.include: health,info,prometheus,metrics
+  endpoint.health.probes.enabled: true
+  tracing.sampling.probability: 1.0
+---
+spring:
+  config.activate.on-profile: platform-threads
+  threads.virtual.enabled: false

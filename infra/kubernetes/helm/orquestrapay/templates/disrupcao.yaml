@@ -1,0 +1,14 @@
+{{- range .Values.servicos }}
+{{- if gt (int .replicas) 1 }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .nome }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .nome }}
+---
+{{- end }}
+{{- end }}

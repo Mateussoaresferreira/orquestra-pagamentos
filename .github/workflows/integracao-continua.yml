@@ -1,0 +1,75 @@
+name: Integracao continua
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integracao-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  java:
+    name: Compilar e testar Java 25
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+      - name: Validar todos os modulos
+        run: ./mvnw --batch-mode --no-transfer-progress clean verify
+      - name: Publicar relatorios de cobertura
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: cobertura-jacoco
+          path: "**/target/site/jacoco/**"
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Publicar resultados dos testes
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: resultados-testes
+          path: "**/target/surefire-reports/**"
+          if-no-files-found: error
+          retention-days: 14
+
+  contratos-e-infra:
+    name: Validar contratos e infraestrutura
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Validar Docker Compose
+        run: |
+          CHAVE_CRIPTOGRAFIA_TOKEN="$(openssl rand -base64 32)" \
+          REDIS_SENHA="$(openssl rand -hex 24)" \
+          PROVEDOR_CHAVE_API="$(openssl rand -hex 32)" \
+          docker compose config --quiet
+      - name: Validar JSON do Postman e Grafana
+        run: |
+          find postman infra/observability/grafana -name '*.json' -print0 \
+            | xargs -0 -n1 jq empty
+      - name: Validar Helm
+        run: docker run --rm -v "$PWD:/trabalho" -w /trabalho alpine/helm@sha256:c6d8088ddb279625a2e1ca3b08b22c18c946d1f65c8b810f28f1597435a1134c lint infra/kubernetes/helm/orquestrapay
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+        with:
+          terraform_version: 1.15.9
+      - name: Validar Terraform
+        working-directory: infra/terraform/aws
+        run: |
+          terraform fmt -check
+          terraform init -backend=false -input=false
+          terraform validate
+          terraform test

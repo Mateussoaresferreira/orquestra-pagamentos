@@ -1,0 +1,67 @@
+spring:
+  application.name: servico-risco
+  threads.virtual.enabled: true
+  main.keep-alive: true
+  datasource:
+    url: ${BANCO_URL:jdbc:postgresql://localhost:5435/orquestrapay_risco}
+    username: ${BANCO_USUARIO:orquestrapay}
+    password: ${BANCO_SENHA}
+  flyway.locations: classpath:db/migration/shared,classpath:db/migration/service
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVIDORES:localhost:9092}
+    consumer:
+      group-id: risco-v1
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: io.apicurio.registry.serde.avro.AvroKafkaDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: io.apicurio.registry.serde.avro.AvroKafkaSerializer
+      acks: all
+    listener.ack-mode: record
+    properties:
+      apicurio.registry.url: ${REGISTRO_ESQUEMAS_URL:http://localhost:8088/apis/registry/v3}
+      apicurio.registry.auto-register: ${REGISTRO_AUTO_CADASTRAR:true}
+      apicurio.registry.use-specific-avro-reader: true
+server:
+  port: ${PORTA:8082}
+  shutdown: graceful
+  max-http-request-header-size: 16KB
+  error:
+    include-message: never
+    include-binding-errors: never
+    include-stacktrace: never
+    include-exception: false
+orquestrapay:
+  seguranca:
+    habilitada: ${SEGURANCA_HABILITADA:true}
+    emissor: ${OIDC_EMISSOR:}
+    cliente-id: ${OIDC_CLIENTE_ID:}
+  eventos:
+    habilitado: true
+    topico: ${TOPICO_SAGA:orquestrapay.saga.v1}
+    intervalo-publicacao: 300
+  risco:
+    politica:
+      limite-valor-alto: ${RISCO_LIMITE_VALOR_ALTO:1000.00}
+      limite-valor-muito-alto: ${RISCO_LIMITE_VALOR_MUITO_ALTO:5000.00}
+      pontos-valor-alto: ${RISCO_PONTOS_VALOR_ALTO:15}
+      pontos-valor-muito-alto: ${RISCO_PONTOS_VALOR_MUITO_ALTO:45}
+      pais-base: ${RISCO_PAIS_BASE:BR}
+      pontos-pais-divergente: ${RISCO_PONTOS_PAIS_DIVERGENTE:25}
+      limite-compras-recentes: ${RISCO_LIMITE_COMPRAS_RECENTES:3}
+      janela-compras-recentes: ${RISCO_JANELA_COMPRAS_RECENTES:10m}
+      pontos-alta-velocidade: ${RISCO_PONTOS_ALTA_VELOCIDADE:35}
+      limite-clientes-por-dispositivo: ${RISCO_LIMITE_CLIENTES_DISPOSITIVO:3}
+      janela-dispositivo-compartilhado: ${RISCO_JANELA_DISPOSITIVO:24h}
+      pontos-dispositivo-compartilhado: ${RISCO_PONTOS_DISPOSITIVO:40}
+      limite-reprovacao: ${RISCO_LIMITE_REPROVACAO:70}
+management:
+  endpoints.web.exposure.include: health,info,prometheus,metrics
+  endpoint.health.probes.enabled: true
+  tracing.sampling.probability: 1.0
+---
+spring:
+  config.activate.on-profile: platform-threads
+  threads.virtual.enabled: false

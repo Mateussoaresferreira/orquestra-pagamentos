@@ -1,0 +1,65 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Servicos disponiveis",
+      "gridPos": {"h": 5, "w": 6, "x": 0, "y": 0},
+      "targets": [{"expr": "sum(up{job=\"orquestrapay\"})", "refId": "A"}],
+      "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 6}]}}}
+    },
+    {
+      "type": "stat",
+      "title": "Compras concluidas",
+      "gridPos": {"h": 5, "w": 6, "x": 6, "y": 0},
+      "targets": [{"expr": "sum(orquestrapay_compras_concluidas_total)", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Compensacoes concluidas",
+      "gridPos": {"h": 5, "w": 6, "x": 12, "y": 0},
+      "targets": [{"expr": "sum(orquestrapay_compensacoes_concluidas_total)", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Requisicoes limitadas",
+      "gridPos": {"h": 5, "w": 6, "x": 18, "y": 0},
+      "targets": [{"expr": "sum(orquestrapay_requisicoes_limitadas_total)", "refId": "A"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Taxa HTTP por servico",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 5},
+      "targets": [{"expr": "sum by (application) (rate(http_server_requests_seconds_count[5m]))", "legendFormat": "{{application}}", "refId": "A"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Latencia HTTP p95",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 5},
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le, application) (rate(http_server_requests_seconds_bucket[5m])))", "legendFormat": "{{application}}", "refId": "A"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Threads vivas",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 13},
+      "targets": [{"expr": "jvm_threads_live_threads", "legendFormat": "{{application}}", "refId": "A"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Conexoes JDBC ativas",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 13},
+      "targets": [{"expr": "hikaricp_connections_active", "legendFormat": "{{application}}", "refId": "A"}]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 42,
+  "tags": ["orquestrapay", "java", "spring-boot"],
+  "templating": {"list": []},
+  "time": {"from": "now-30m", "to": "now"},
+  "timezone": "browser",
+  "title": "Orquestra de Pagamentos - Visao operacional",
+  "uid": "orquestrapay-operacional",
+  "version": 1
+}

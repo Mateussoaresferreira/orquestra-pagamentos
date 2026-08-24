@@ -1,0 +1,162 @@
+{{- range .Values.servicos }}
+{{- $servico := . }}
+{{- $raiz := $ }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $servico.nome }}
+  labels:
+    {{- include "orquestrapay.rotulosServico" (dict "raiz" $raiz "servico" $servico) | nindent 4 }}
+spec:
+  replicas: {{ $servico.replicas }}
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $servico.nome }}
+  template:
+    metadata:
+      labels:
+        {{- include "orquestrapay.rotulosServico" (dict "raiz" $raiz "servico" $servico) | nindent 8 }}
+    spec:
+      serviceAccountName: {{ if $servico.usaKafka }}{{ $raiz.Values.global.contaServico.nome }}{{ else }}{{ $raiz.Values.global.contaServico.semAwsNome }}{{ end }}
+      automountServiceAccountToken: {{ if $servico.usaKafka }}true{{ else }}false{{ end }}
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ $servico.nome }}
+      containers:
+        - name: {{ $servico.chave }}
+          image: "{{ $raiz.Values.global.imagens.registro }}/{{ $servico.imagem }}:{{ $raiz.Values.global.imagens.tag }}"
+          imagePullPolicy: {{ $raiz.Values.global.imagens.politicaPull }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - { name: PORTA, value: "8080" }
+            - { name: JAVA_TOOL_OPTIONS, value: "-Dfile.encoding=UTF-8 -XX:MaxRAMPercentage=70.0" }
+            - { name: OTEL_SERVICE_NAME, value: {{ $servico.nome | quote }} }
+            - { name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ $raiz.Values.global.observabilidade.otlp | quote }} }
+            - { name: OTEL_EXPORTER_OTLP_PROTOCOL, value: "http/protobuf" }
+            - { name: MANAGEMENT_TRACING_SAMPLING_PROBABILITY, value: {{ $raiz.Values.global.observabilidade.amostragem | quote }} }
+            {{- if $servico.usaSeguranca }}
+            - { name: SEGURANCA_HABILITADA, value: {{ $raiz.Values.global.seguranca.habilitada | quote }} }
+            - { name: OIDC_EMISSOR, value: {{ $raiz.Values.global.seguranca.emissor | quote }} }
+            - { name: OIDC_CLIENTE_ID, value: {{ $raiz.Values.global.seguranca.clienteId | quote }} }
+            {{- end }}
+            {{- if $servico.usaBanco }}
+            - name: BANCO_URL
+              value: "jdbc:postgresql://{{ $raiz.Values.global.banco.host }}:{{ $raiz.Values.global.banco.porta }}/{{ $servico.banco }}?sslmode=require"
+            - name: BANCO_USUARIO
+              value: {{ $servico.bancoUsuario | quote }}
+            - name: BANCO_SENHA
+              valueFrom:
+                secretKeyRef: { name: {{ $raiz.Values.global.banco.segredo }}, key: {{ $servico.bancoSenhaChave }} }
+            {{- end }}
+            {{- if $servico.usaKafka }}
+            - { name: KAFKA_SERVIDORES, value: {{ $raiz.Values.global.kafka.servidores | quote }} }
+            - { name: TOPICO_SAGA, value: {{ $raiz.Values.global.kafka.topico | quote }} }
+            - { name: REGISTRO_ESQUEMAS_URL, value: {{ $raiz.Values.global.registroEsquemas.url | quote }} }
+            {{- if $raiz.Values.global.kafka.autenticacaoIam }}
+            - { name: SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL, value: "SASL_SSL" }
+            - { name: SPRING_KAFKA_PROPERTIES_SASL_MECHANISM, value: "AWS_MSK_IAM" }
+            - { name: SPRING_KAFKA_PROPERTIES_SASL_JAAS_CONFIG, value: "software.amazon.msk.auth.iam.IAMLoginModule required;" }
+            - { name: SPRING_KAFKA_PROPERTIES_SASL_CLIENT_CALLBACK_HANDLER_CLASS, value: "software.amazon.msk.auth.iam.IAMClientCallbackHandler" }
+            {{- end }}
+            {{- end }}
+            {{- if $servico.usaRedis }}
+            - { name: REDIS_HOST, value: {{ $raiz.Values.global.redis.host | quote }} }
+            - { name: REDIS_PORTA, value: {{ $raiz.Values.global.redis.porta | quote }} }
+            - { name: REDIS_SSL, value: "true" }
+            - name: REDIS_SENHA
+              valueFrom:
+                secretKeyRef: { name: {{ $raiz.Values.global.banco.segredo }}, key: redis-senha }
+            {{- end }}
+            {{- if $servico.usaCriptografia }}
+            - name: CHAVE_CRIPTOGRAFIA_TOKEN
+              valueFrom:
+                secretKeyRef: { name: {{ $raiz.Values.global.banco.segredo }}, key: chave-criptografia-token }
+            {{- end }}
+            {{- if $servico.usaChaveProvedor }}
+            - name: PROVEDOR_CHAVE_API
+              valueFrom:
+                secretKeyRef: { name: {{ $raiz.Values.global.banco.segredo }}, key: chave-api-provedor }
+            {{- end }}
+            {{- if $servico.usaPoliticaRisco }}
+            - { name: RISCO_LIMITE_VALOR_ALTO, value: {{ $raiz.Values.politicaRisco.limiteValorAlto | quote }} }
+            - { name: RISCO_LIMITE_VALOR_MUITO_ALTO, value: {{ $raiz.Values.politicaRisco.limiteValorMuitoAlto | quote }} }
+            - { name: RISCO_PONTOS_VALOR_ALTO, value: {{ $raiz.Values.politicaRisco.pontosValorAlto | quote }} }
+            - { name: RISCO_PONTOS_VALOR_MUITO_ALTO, value: {{ $raiz.Values.politicaRisco.pontosValorMuitoAlto | quote }} }
+            - { name: RISCO_PAIS_BASE, value: {{ $raiz.Values.politicaRisco.paisBase | quote }} }
+            - { name: RISCO_PONTOS_PAIS_DIVERGENTE, value: {{ $raiz.Values.politicaRisco.pontosPaisDivergente | quote }} }
+            - { name: RISCO_LIMITE_COMPRAS_RECENTES, value: {{ $raiz.Values.politicaRisco.limiteComprasRecentes | quote }} }
+            - { name: RISCO_JANELA_COMPRAS_RECENTES, value: {{ $raiz.Values.politicaRisco.janelaComprasRecentes | quote }} }
+            - { name: RISCO_PONTOS_ALTA_VELOCIDADE, value: {{ $raiz.Values.politicaRisco.pontosAltaVelocidade | quote }} }
+            - { name: RISCO_LIMITE_CLIENTES_DISPOSITIVO, value: {{ $raiz.Values.politicaRisco.limiteClientesPorDispositivo | quote }} }
+            - { name: RISCO_JANELA_DISPOSITIVO, value: {{ $raiz.Values.politicaRisco.janelaDispositivoCompartilhado | quote }} }
+            - { name: RISCO_PONTOS_DISPOSITIVO, value: {{ $raiz.Values.politicaRisco.pontosDispositivoCompartilhado | quote }} }
+            - { name: RISCO_LIMITE_REPROVACAO, value: {{ $raiz.Values.politicaRisco.limiteReprovacao | quote }} }
+            {{- end }}
+            {{- range $nome, $valor := $servico.ambiente }}
+            - { name: {{ $nome }}, value: {{ $valor | quote }} }
+            {{- end }}
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: http }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            initialDelaySeconds: 45
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 4
+          lifecycle:
+            preStop:
+              exec: { command: ["/bin/sh", "-c", "sleep 10"] }
+          resources:
+            requests:
+              cpu: {{ $servico.recursos.requisicoes.cpu | quote }}
+              memory: {{ $servico.recursos.requisicoes.memoria | quote }}
+            limits:
+              cpu: {{ $servico.recursos.limites.cpu | quote }}
+              memory: {{ $servico.recursos.limites.memoria | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: temporarios, mountPath: /tmp }
+      volumes:
+        - name: temporarios
+          emptyDir:
+            sizeLimit: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $servico.nome }}
+  labels:
+    {{- include "orquestrapay.rotulosServico" (dict "raiz" $raiz "servico" $servico) | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: {{ $servico.nome }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+  type: ClusterIP
+---
+{{- end }}

@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: orquestrapay
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/SEU_USUARIO/orquestrapay.git
+    targetRevision: main
+    path: infra/kubernetes/helm/orquestrapay
+    helm:
+      valueFiles: [values.yaml]
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: orquestrapay
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

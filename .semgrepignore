@@ -1,0 +1,5 @@
+**/target/**
+**/.terraform/**
+.auditoria/**
+.env
+.env.*

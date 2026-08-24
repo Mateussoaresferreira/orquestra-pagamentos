@@ -1,0 +1,12 @@
+**/target/*.jar.original
+**/target/test-classes
+**/target/surefire-reports
+.git
+.idea
+.vscode
+.env
+.env.*
+docs
+infra
+postman
+tests

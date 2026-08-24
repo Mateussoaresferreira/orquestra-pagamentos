@@ -1,0 +1,67 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: metricas-da-observabilidade
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: orquestrapay
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observabilidade
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pagamento-acessa-provedor
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: simulador-provedor
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: servico-pagamento
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: servicos-acessam-registro
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: registro-esquemas
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: orquestrapay
+      ports:
+        - { protocol: TCP, port: 8080 }
+{{- if .Values.ingresso.habilitado }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ingresso-publico-checkout
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: servico-checkout
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - ipBlock: { cidr: 0.0.0.0/0 }
+      ports:
+        - { protocol: TCP, port: 8080 }
+{{- end }}

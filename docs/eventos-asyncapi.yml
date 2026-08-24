@@ -1,0 +1,103 @@
+asyncapi: 3.1.0
+info:
+  title: Eventos da saga Orquestra de Pagamentos
+  version: 1.0.0
+  description: Contrato do fluxo assíncrono de compras, recusas e compensações.
+defaultContentType: application/vnd.apache.avro+avro
+servers:
+  local:
+    host: localhost:9092
+    protocol: kafka
+    description: Broker do ambiente Docker local.
+channels:
+  saga:
+    address: orquestrapay.saga.v1
+    messages:
+      eventoSaga:
+        $ref: '#/components/messages/eventoSaga'
+  sagaMorta:
+    address: orquestrapay.saga.v1.dlt
+    messages:
+      eventoSagaFalho:
+        $ref: '#/components/messages/eventoSaga'
+operations:
+  publicarNaSaga:
+    action: send
+    channel:
+      $ref: '#/channels/saga'
+    messages:
+      - $ref: '#/channels/saga/messages/eventoSaga'
+  consumirDaSaga:
+    action: receive
+    channel:
+      $ref: '#/channels/saga'
+    messages:
+      - $ref: '#/channels/saga/messages/eventoSaga'
+  investigarFalhas:
+    action: receive
+    channel:
+      $ref: '#/channels/sagaMorta'
+    messages:
+      - $ref: '#/channels/sagaMorta/messages/eventoSagaFalho'
+components:
+  messages:
+    eventoSaga:
+      name: EventoSaga
+      title: Envelope versionado da saga
+      summary: Comando ou fato de negócio correlacionado a uma compra.
+      headers:
+        type: object
+        properties:
+          traceparent:
+            type: string
+            description: Contexto W3C usado para continuar o trace distribuído.
+      payload:
+        schemaFormat: application/vnd.apache.avro;version=1.12.1
+        schema:
+          type: record
+          name: EventoSaga
+          namespace: br.com.orquestrapay.contracts
+          fields:
+            - name: idEvento
+              type: string
+            - name: tipo
+              type: string
+            - name: versao
+              type: int
+              default: 1
+            - name: idCorrelacao
+              type: string
+            - name: idEmpresa
+              type: string
+            - name: idCompra
+              type: string
+            - name: origem
+              type: string
+            - name: ocorridoEm
+              type:
+                type: long
+                logicalType: timestamp-millis
+            - name: sequencia
+              type: long
+            - name: conteudo
+              type: string
+            - name: traceparent
+              type:
+                - 'null'
+                - string
+              default: null
+      examples:
+        - name: solicitarReserva
+          summary: Primeiro comando emitido pelo checkout.
+          payload:
+            idEvento: 11111111-1111-1111-1111-111111111111
+            tipo: RESERVAR_ESTOQUE
+            versao: 1
+            idCorrelacao: 22222222-2222-2222-2222-222222222222
+            idEmpresa: 33333333-3333-3333-3333-333333333333
+            idCompra: 22222222-2222-2222-2222-222222222222
+            origem: servico-checkout
+            ocorridoEm: 1787486400000
+            sequencia: 1
+            conteudo: '{"idReserva":"44444444-4444-4444-4444-444444444444","itens":[]}'
+            traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01

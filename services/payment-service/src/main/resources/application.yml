@@ -1,0 +1,68 @@
+spring:
+  application.name: servico-pagamento
+  threads.virtual.enabled: true
+  main.keep-alive: true
+  datasource:
+    url: ${BANCO_URL:jdbc:postgresql://localhost:5436/orquestrapay_pagamento}
+    username: ${BANCO_USUARIO:orquestrapay}
+    password: ${BANCO_SENHA}
+  flyway.locations: classpath:db/migration/shared,classpath:db/migration/service
+  kafka:
+    bootstrap-servers: ${KAFKA_SERVIDORES:localhost:9092}
+    consumer:
+      group-id: pagamento-v1
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: io.apicurio.registry.serde.avro.AvroKafkaDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: io.apicurio.registry.serde.avro.AvroKafkaSerializer
+      acks: all
+    listener.ack-mode: record
+    properties:
+      apicurio.registry.url: ${REGISTRO_ESQUEMAS_URL:http://localhost:8088/apis/registry/v3}
+      apicurio.registry.auto-register: ${REGISTRO_AUTO_CADASTRAR:true}
+      apicurio.registry.use-specific-avro-reader: true
+server:
+  port: ${PORTA:8083}
+  shutdown: graceful
+  max-http-request-header-size: 16KB
+  error:
+    include-message: never
+    include-binding-errors: never
+    include-stacktrace: never
+    include-exception: false
+orquestrapay:
+  seguranca:
+    habilitada: ${SEGURANCA_HABILITADA:true}
+    emissor: ${OIDC_EMISSOR:}
+    cliente-id: ${OIDC_CLIENTE_ID:}
+  criptografia:
+    chave-token-base64: ${CHAVE_CRIPTOGRAFIA_TOKEN}
+  provedor:
+    url: ${PROVEDOR_URL:http://localhost:8090}
+    tempo-limite-conexao: ${PROVEDOR_TEMPO_LIMITE_CONEXAO:2s}
+    tempo-limite-leitura: ${PROVEDOR_TEMPO_LIMITE_LEITURA:5s}
+    chave-api: ${PROVEDOR_CHAVE_API}
+  eventos:
+    habilitado: true
+    topico: ${TOPICO_SAGA:orquestrapay.saga.v1}
+    intervalo-publicacao: 300
+resilience4j:
+  circuitbreaker.instances.provedor-pagamento:
+    sliding-window-size: 10
+    minimum-number-of-calls: 5
+    failure-rate-threshold: 50
+    wait-duration-in-open-state: 10s
+  retry.instances.provedor-pagamento:
+    max-attempts: 3
+    wait-duration: 250ms
+management:
+  endpoints.web.exposure.include: health,info,prometheus,metrics,circuitbreakers
+  endpoint.health.probes.enabled: true
+  tracing.sampling.probability: 1.0
+---
+spring:
+  config.activate.on-profile: platform-threads
+  threads.virtual.enabled: false

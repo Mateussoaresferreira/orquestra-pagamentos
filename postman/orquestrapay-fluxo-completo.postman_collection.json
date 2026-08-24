@@ -1,0 +1,235 @@
+{
+  "info": {
+    "_postman_id": "6646ac40-f6e8-4dc9-bb3d-91015ca2bd0f",
+    "name": "Orquestra de Pagamentos - Fluxo completo",
+    "description": "Executa uma saga de compra real, valida idempotencia e consulta as evidencias produzidas pelos seis microsservicos. O ambiente local funciona sem token. Para seguranca habilitada, preencha tokenAcesso.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{tokenAcesso}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "idEmpresa", "value": "" },
+    { "key": "idProdutoA", "value": "30000000-0000-0000-0000-000000000001" },
+    { "key": "idProdutoB", "value": "30000000-0000-0000-0000-000000000002" },
+    { "key": "chaveIdempotencia", "value": "" },
+    { "key": "idCompra", "value": "" },
+    { "key": "idPagamento", "value": "" },
+    { "key": "idCompraRecusada", "value": "" },
+    { "key": "idCompraCompensada", "value": "" },
+    { "key": "tentativasSaga", "value": "" },
+    { "key": "tentativasNotificacao", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "01 - Preparar dados",
+      "item": [
+        {
+          "name": "Definir estoque do produto A",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('idEmpresa', pm.variables.replaceIn('{{$guid}}'));",
+                  "pm.collectionVariables.set('chaveIdempotencia', 'postman-' + pm.variables.replaceIn('{{$guid}}'));",
+                  "pm.collectionVariables.unset('idCompra');",
+                  "pm.collectionVariables.unset('idPagamento');",
+                  "pm.collectionVariables.unset('tentativasSaga');",
+                  "pm.collectionVariables.unset('tentativasNotificacao');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Estoque A preparado', () => pm.response.to.have.status(200));",
+                  "pm.test('Saldo A igual a 100', () => pm.expect(pm.response.json().quantidadeDisponivel).to.eql(100));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "X-Empresa-Id", "value": "{{idEmpresa}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"quantidadeDisponivel\": 100,\n  \"motivo\": \"Preparacao do fluxo Postman\"\n}" },
+            "url": { "raw": "{{urlEstoque}}/api/v1/estoques/{{idProdutoA}}", "host": ["{{urlEstoque}}"], "path": ["api", "v1", "estoques", "{{idProdutoA}}"] }
+          }
+        },
+        {
+          "name": "Definir estoque do produto B",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Estoque B preparado', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "X-Empresa-Id", "value": "{{idEmpresa}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"quantidadeDisponivel\": 100,\n  \"motivo\": \"Preparacao do fluxo Postman\"\n}" },
+            "url": { "raw": "{{urlEstoque}}/api/v1/estoques/{{idProdutoB}}", "host": ["{{urlEstoque}}"], "path": ["api", "v1", "estoques", "{{idProdutoB}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Compra aprovada",
+      "item": [
+        {
+          "name": "Criar compra",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Compra aceita de forma assincrona', () => pm.response.to.have.status(202));",
+            "const corpo = pm.response.json();",
+            "pm.expect(corpo.status).to.eql('RECEBIDA');",
+            "pm.collectionVariables.set('idCompra', corpo.idCompra);"
+          ], "type": "text/javascript" } }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Empresa-Id", "value": "{{idEmpresa}}" },
+              { "key": "Idempotency-Key", "value": "{{chaveIdempotencia}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"idCliente\": \"cliente-postman-001\",\n  \"emailCliente\": \"cliente.postman@orquestrapay.local\",\n  \"moeda\": \"BRL\",\n  \"pais\": \"BR\",\n  \"identificadorDispositivo\": \"notebook-postman-001\",\n  \"tokenPagamento\": \"tok_aprovado\",\n  \"itens\": [\n    { \"idProduto\": \"{{idProdutoA}}\", \"quantidade\": 2, \"precoUnitario\": 79.90 },\n    { \"idProduto\": \"{{idProdutoB}}\", \"quantidade\": 1, \"precoUnitario\": 39.90 }\n  ]\n}" },
+            "url": { "raw": "{{urlCheckout}}/api/v1/compras", "host": ["{{urlCheckout}}"], "path": ["api", "v1", "compras"] }
+          }
+        },
+        {
+          "name": "Repetir a mesma compra",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Repeticao retorna 202', () => pm.response.to.have.status(202));",
+            "pm.test('Servidor marcou replay', () => pm.expect(pm.response.headers.get('Idempotency-Replayed')).to.eql('true'));",
+            "pm.test('Nao criou outra compra', () => pm.expect(pm.response.json().idCompra).to.eql(pm.collectionVariables.get('idCompra')));"
+          ], "type": "text/javascript" } }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Empresa-Id", "value": "{{idEmpresa}}" },
+              { "key": "Idempotency-Key", "value": "{{chaveIdempotencia}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"idCliente\": \"cliente-postman-001\",\n  \"emailCliente\": \"cliente.postman@orquestrapay.local\",\n  \"moeda\": \"BRL\",\n  \"pais\": \"BR\",\n  \"identificadorDispositivo\": \"notebook-postman-001\",\n  \"tokenPagamento\": \"tok_aprovado\",\n  \"itens\": [\n    { \"idProduto\": \"{{idProdutoA}}\", \"quantidade\": 2, \"precoUnitario\": 79.90 },\n    { \"idProduto\": \"{{idProdutoB}}\", \"quantidade\": 1, \"precoUnitario\": 39.90 }\n  ]\n}" },
+            "url": { "raw": "{{urlCheckout}}/api/v1/compras", "host": ["{{urlCheckout}}"], "path": ["api", "v1", "compras"] }
+          }
+        },
+        {
+          "name": "Consultar estado da compra",
+          "event": [
+            { "listen": "prerequest", "script": { "exec": [
+              "const tentativa = Number(pm.collectionVariables.get('tentativasSaga') || 0);",
+              "if (tentativa > 0) { setTimeout(() => {}, 750); }"
+            ], "type": "text/javascript" } },
+            { "listen": "test", "script": { "exec": [
+              "pm.test('Compra encontrada', () => pm.response.to.have.status(200));",
+              "const corpo = pm.response.json();",
+              "const tentativa = Number(pm.collectionVariables.get('tentativasSaga') || 0) + 1;",
+              "const estadosEmAndamento = ['RECEBIDA','ESTOQUE_RESERVADO','RISCO_APROVADO','PAGAMENTO_AUTORIZADO'];",
+              "if (corpo.status !== 'CONCLUIDA' && estadosEmAndamento.includes(corpo.status) && tentativa < 20) {",
+              "  pm.collectionVariables.set('tentativasSaga', String(tentativa));",
+              "  pm.execution.setNextRequest(pm.info.requestName);",
+              "} else {",
+              "  pm.collectionVariables.unset('tentativasSaga');",
+              "  pm.test('Saga concluida antes do limite', () => pm.expect(corpo.status).to.eql('CONCLUIDA'));",
+              "}"
+            ], "type": "text/javascript" } }
+          ],
+          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlCheckout}}/api/v1/compras/{{idCompra}}", "host": ["{{urlCheckout}}"], "path": ["api", "v1", "compras", "{{idCompra}}"] } }
+        },
+        {
+          "name": "Consultar historico da saga",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Historico possui etapas', () => pm.expect(pm.response.json().length).to.be.above(0));"], "type": "text/javascript" } }],
+          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlCheckout}}/api/v1/compras/{{idCompra}}/historico", "host": ["{{urlCheckout}}"], "path": ["api", "v1", "compras", "{{idCompra}}", "historico"] } }
+        },
+        {
+          "name": "Consultar risco",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Risco aprovado', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().aprovada).to.be.true; });"], "type": "text/javascript" } }],
+          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlRisco}}/api/v1/analises-risco/compras/{{idCompra}}", "host": ["{{urlRisco}}"], "path": ["api", "v1", "analises-risco", "compras", "{{idCompra}}"] } }
+        },
+        {
+          "name": "Consultar pagamento",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Pagamento autorizado', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('AUTORIZADO'); });",
+            "pm.collectionVariables.set('idPagamento', pm.response.json().idPagamento);"
+          ], "type": "text/javascript" } }],
+          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlPagamento}}/api/v1/pagamentos/compras/{{idCompra}}", "host": ["{{urlPagamento}}"], "path": ["api", "v1", "pagamentos", "compras", "{{idCompra}}"] } }
+        },
+        {
+          "name": "Consultar partidas dobradas",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Transacao contabil balanceada', () => { const c = pm.response.json(); pm.expect(c.totalDebitos).to.eql(c.totalCreditos); pm.expect(c.lancamentos.length).to.eql(2); });"
+          ], "type": "text/javascript" } }],
+          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlRazao}}/api/v1/transacoes-contabeis/compras/{{idCompra}}", "host": ["{{urlRazao}}"], "path": ["api", "v1", "transacoes-contabeis", "compras", "{{idCompra}}"] } }
+        },
+        {
+          "name": "Consultar notificacao",
+          "event": [
+            { "listen": "prerequest", "script": { "exec": [
+              "const tentativa = Number(pm.collectionVariables.get('tentativasNotificacao') || 0);",
+              "if (tentativa > 0) { setTimeout(() => {}, 500); }"
+            ], "type": "text/javascript" } },
+            { "listen": "test", "script": { "exec": [
+              "pm.test('Consulta de notificacao respondida', () => pm.response.to.have.status(200));",
+              "const notificacoes = pm.response.json();",
+              "const tentativa = Number(pm.collectionVariables.get('tentativasNotificacao') || 0) + 1;",
+              "if (notificacoes.length === 0 && tentativa < 20) {",
+              "  pm.collectionVariables.set('tentativasNotificacao', String(tentativa));",
+              "  pm.execution.setNextRequest(pm.info.requestName);",
+              "} else {",
+              "  pm.collectionVariables.unset('tentativasNotificacao');",
+              "  pm.test('Notificacao enviada antes do limite', () => pm.expect(notificacoes.length).to.be.above(0));",
+              "}"
+            ], "type": "text/javascript" } }
+          ],
+          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlNotificacao}}/api/v1/notificacoes/compras/{{idCompra}}", "host": ["{{urlNotificacao}}"], "path": ["api", "v1", "notificacoes", "compras", "{{idCompra}}"] } }
+        },
+        {
+          "name": "Conciliar pagamento",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Conciliacao sem divergencias', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().divergencias).to.be.empty; });"], "type": "text/javascript" } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"registros\": [\n    { \"idPagamento\": \"{{idPagamento}}\", \"valor\": 199.70, \"status\": \"AUTORIZADO\" }\n  ]\n}" },
+            "url": { "raw": "{{urlPagamento}}/api/v1/conciliacoes", "host": ["{{urlPagamento}}"], "path": ["api", "v1", "conciliacoes"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Falhas controladas",
+      "item": [
+        {
+          "name": "Criar compra recusada pelo emissor",
+          "event": [
+            { "listen": "prerequest", "script": { "exec": ["pm.variables.set('chaveFalha', 'recusa-' + pm.variables.replaceIn('{{$guid}}'));"], "type": "text/javascript" } },
+            { "listen": "test", "script": { "exec": ["pm.test('Compra de recusa aceita pela saga', () => pm.response.to.have.status(202));", "pm.collectionVariables.set('idCompraRecusada', pm.response.json().idCompra);"], "type": "text/javascript" } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }, { "key": "Idempotency-Key", "value": "{{chaveFalha}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"idCliente\": \"cliente-recusado\",\n  \"emailCliente\": \"recusado@orquestrapay.local\",\n  \"moeda\": \"BRL\",\n  \"pais\": \"BR\",\n  \"identificadorDispositivo\": \"dispositivo-recusa\",\n  \"tokenPagamento\": \"tok_recusado\",\n  \"itens\": [{ \"idProduto\": \"{{idProdutoA}}\", \"quantidade\": 1, \"precoUnitario\": 49.90 }]\n}" },
+            "url": { "raw": "{{urlCheckout}}/api/v1/compras", "host": ["{{urlCheckout}}"], "path": ["api", "v1", "compras"] }
+          }
+        },
+        {
+          "name": "Criar compra que exige compensacao",
+          "event": [
+            { "listen": "prerequest", "script": { "exec": ["pm.variables.set('chaveCompensacao', 'compensacao-' + pm.variables.replaceIn('{{$guid}}'));"], "type": "text/javascript" } },
+            { "listen": "test", "script": { "exec": ["pm.test('Compra de compensacao aceita pela saga', () => pm.response.to.have.status(202));", "pm.collectionVariables.set('idCompraCompensada', pm.response.json().idCompra);"], "type": "text/javascript" } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }, { "key": "Idempotency-Key", "value": "{{chaveCompensacao}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"idCliente\": \"cliente-compensacao\",\n  \"emailCliente\": \"compensacao@orquestrapay.local\",\n  \"moeda\": \"XXX\",\n  \"pais\": \"BR\",\n  \"identificadorDispositivo\": \"dispositivo-compensacao\",\n  \"tokenPagamento\": \"tok_aprovado\",\n  \"itens\": [{ \"idProduto\": \"{{idProdutoB}}\", \"quantidade\": 1, \"precoUnitario\": 29.90 }]\n}" },
+            "url": { "raw": "{{urlCheckout}}/api/v1/compras", "host": ["{{urlCheckout}}"], "path": ["api", "v1", "compras"] }
+          }
+        }
+      ]
+    }
+  ]
+}

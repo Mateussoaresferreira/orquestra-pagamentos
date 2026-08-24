@@ -1,0 +1,99 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-preparar-bancos-{{ .Release.Revision }}
+  labels:
+    {{- include "orquestrapay.rotulos" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: preparar-bancos
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: {{ .Values.global.contaServico.semAwsNome }}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: preparar-bancos
+          image: postgres:17-alpine
+          env:
+            - name: PGHOST
+              value: {{ .Values.global.banco.host | quote }}
+            - name: PGPORT
+              value: {{ .Values.global.banco.porta | quote }}
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.banco.segredo }}
+                  key: {{ .Values.global.banco.chaveUsuarioMestre }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.banco.segredo }}
+                  key: {{ .Values.global.banco.chaveSenhaMestre }}
+            {{- range .Values.servicos }}
+            {{- if .usaBanco }}
+            - name: BANCO_{{ .chave | upper }}_SENHA
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.global.banco.segredo }}
+                  key: {{ .bancoSenhaChave }}
+            {{- end }}
+            {{- end }}
+            - name: BANCO_REGISTRO_SENHA
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.global.banco.segredo }}
+                  key: {{ .Values.global.registroEsquemas.bancoSenhaChave }}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              configurar_banco() {
+                banco="$1"
+                usuario="$2"
+                senha="$3"
+
+                psql --set=ON_ERROR_STOP=1 -d postgres \
+                  --set=banco="$banco" --set=usuario="$usuario" --set=senha="$senha" <<'SQL'
+              SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'usuario', :'senha')
+              WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'usuario')
+              \gexec
+              SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L', :'usuario', :'senha')
+              \gexec
+              SELECT format('CREATE DATABASE %I OWNER %I', :'banco', :'usuario')
+              WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'banco')
+              \gexec
+              SELECT format('ALTER DATABASE %I OWNER TO %I', :'banco', :'usuario')
+              \gexec
+              SELECT format('REVOKE ALL ON DATABASE %I FROM PUBLIC', :'banco')
+              \gexec
+              SELECT format('GRANT CONNECT ON DATABASE %I TO %I', :'banco', :'usuario')
+              \gexec
+              SQL
+              }
+
+              configurar_banco orquestrapay_checkout checkout_app "$BANCO_CHECKOUT_SENHA"
+              configurar_banco orquestrapay_estoque estoque_app "$BANCO_ESTOQUE_SENHA"
+              configurar_banco orquestrapay_risco risco_app "$BANCO_RISCO_SENHA"
+              configurar_banco orquestrapay_pagamento pagamento_app "$BANCO_PAGAMENTO_SENHA"
+              configurar_banco orquestrapay_razao razao_app "$BANCO_RAZAO_SENHA"
+              configurar_banco orquestrapay_notificacao notificacao_app "$BANCO_NOTIFICACAO_SENHA"
+              configurar_banco orquestrapay_registro registro_app "$BANCO_REGISTRO_SENHA"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: temporarios, mountPath: /tmp }
+      volumes:
+        - name: temporarios
+          emptyDir:
+            sizeLimit: 32Mi

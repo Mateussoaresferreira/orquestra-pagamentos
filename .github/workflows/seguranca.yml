@@ -1,0 +1,151 @@
+name: Seguranca
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  codeql:
+    name: Analise estatica Java
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+      - uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
+        with:
+          languages: java-kotlin
+          build-mode: manual
+      - name: Compilar para analise
+        run: ./mvnw --batch-mode --no-transfer-progress package -DskipTests
+      - uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
+      - name: Gerar inventario CycloneDX das dependencias
+        run: >-
+          ./mvnw --batch-mode --no-transfer-progress
+          org.cyclonedx:cyclonedx-maven-plugin:2.9.3:makeAggregateBom
+          -DskipTests
+          -DoutputFormat=json
+          -DoutputName=orquestra-pagamentos-sbom
+      - name: Verificar vulnerabilidades no SBOM Java
+        run: |
+          docker run --rm \
+            -v trivy-cache:/root/.cache/trivy \
+            -v "$PWD:/src:ro" \
+            aquasec/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 \
+            sbom --scanners vuln --offline-scan --ignore-unfixed \
+            --severity HIGH,CRITICAL --exit-code 1 \
+            /src/target/orquestra-pagamentos-sbom.json
+      - name: Arquivar SBOM
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        with:
+          name: orquestra-pagamentos-sbom
+          path: target/orquestra-pagamentos-sbom.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Construir imagem representativa para auditoria
+        shell: bash
+        run: |
+          artefato=$(find services/checkout-service/target -maxdepth 1 \
+            -name '*.jar' ! -name '*.original' -print -quit)
+          test -n "$artefato"
+          docker build --pull \
+            --build-arg "CAMINHO_ARTEFATO=$artefato" \
+            --tag orquestrapay/servico-checkout:auditoria \
+            --file docker/Dockerfile .
+      - name: Verificar sistema operacional e JAR da imagem
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v trivy-cache:/root/.cache/trivy \
+            aquasec/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 \
+            image --scanners vuln --offline-scan --ignore-unfixed \
+            --severity HIGH,CRITICAL --exit-code 1 \
+            orquestrapay/servico-checkout:auditoria
+
+  segredos:
+    name: Detectar segredos versionados
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - name: Executar Gitleaks
+        run: |
+          docker run --rm -v "$PWD:/src:ro" \
+            ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            detect --source=/src --redact --no-banner --exit-code=1
+
+  sast-complementar:
+    name: Analise Semgrep OWASP
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Executar Semgrep
+        run: |
+          docker run --rm -v "$PWD:/src:ro" \
+            semgrep/semgrep@sha256:67319956da3dcb58baf5b322899c15458e3963e7018a86aeeb5cd224e69cb77a \
+            semgrep scan --config p/java --config p/owasp-top-ten \
+            --metrics=off --error /src
+
+  infraestrutura-segura:
+    name: Segredos e configuracoes inseguras
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Renderizar manifestos Helm
+        run: |
+          mkdir -p .auditoria
+          docker run --rm -v "$PWD:/trabalho" -w /trabalho \
+            alpine/helm@sha256:c6d8088ddb279625a2e1ca3b08b22c18c946d1f65c8b810f28f1597435a1134c \
+            template orquestra-pagamentos infra/kubernetes/helm/orquestrapay \
+            > .auditoria/manifestos-kubernetes.yaml
+      - name: Executar Trivy em configuracoes renderizadas
+        run: |
+          for alvo in \
+            /src/infra/terraform/aws \
+            /src/docker/Dockerfile \
+            /src/.auditoria/manifestos-kubernetes.yaml; do
+              docker run --rm \
+                -v trivy-cache:/root/.cache/trivy \
+                -v "$PWD:/src:ro" \
+                aquasec/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 \
+                config --severity HIGH,CRITICAL --exit-code 1 "$alvo"
+          done
+      - name: Executar Trivy para segredos no diretorio de trabalho
+        run: |
+          docker run --rm \
+            -v "$PWD:/src:ro" \
+            aquasec/trivy@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 \
+            fs --scanners secret --skip-files '**/pom.xml' \
+            --skip-dirs '**/target' --skip-dirs '**/.terraform' --skip-dirs '**/.idea' \
+            --severity HIGH,CRITICAL --exit-code 1 /src
+
+  dependencias:
+    name: Revisar novas dependencias
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: always

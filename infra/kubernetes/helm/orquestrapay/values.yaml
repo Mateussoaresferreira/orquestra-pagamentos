@@ -1,0 +1,183 @@
+global:
+  ambiente: producao
+  imagens:
+    registro: 000000000000.dkr.ecr.us-east-1.amazonaws.com
+    tag: "0.1.0"
+    politicaPull: IfNotPresent
+  seguranca:
+    habilitada: true
+    emissor: https://cognito-idp.us-east-1.amazonaws.com/us-east-1_EXEMPLO
+    clienteId: cliente-exemplo
+  kafka:
+    servidores: b-1.exemplo.kafka.us-east-1.amazonaws.com:9098
+    topico: orquestrapay.saga.v1
+    autenticacaoIam: true
+  registroEsquemas:
+    url: http://registro-esquemas:8080/apis/registry/v3
+    imagem: apicurio/apicurio-registry:3.3.1
+    bancoUsuario: registro_app
+    bancoSenhaChave: banco-registro-senha
+  banco:
+    host: banco.exemplo.us-east-1.rds.amazonaws.com
+    porta: 5432
+    segredo: orquestrapay-segredos
+    chaveUsuarioMestre: banco-usuario-mestre
+    chaveSenhaMestre: banco-senha-mestre
+  redis:
+    host: redis.exemplo.cache.amazonaws.com
+    porta: 6379
+  observabilidade:
+    otlp: http://coletor-opentelemetry.observabilidade:4318
+    amostragem: "0.10"
+  contaServico:
+    nome: orquestrapay
+    semAwsNome: orquestrapay-sem-aws
+    segredosNome: orquestrapay-segredos
+    funcaoIamArn: arn:aws:iam::000000000000:role/orquestrapay-aplicacao
+    segredosFuncaoIamArn: arn:aws:iam::000000000000:role/orquestrapay-segredos
+
+segredos:
+  criar: false
+  bancoUsuarioMestre: altere-me
+  bancoSenhaMestre: altere-me
+  bancoCheckoutSenha: altere-me
+  bancoEstoqueSenha: altere-me
+  bancoRiscoSenha: altere-me
+  bancoPagamentoSenha: altere-me
+  bancoRazaoSenha: altere-me
+  bancoNotificacaoSenha: altere-me
+  bancoRegistroSenha: altere-me
+  redisSenha: altere-me-com-ao-menos-16-caracteres
+  chaveCriptografiaToken: altere-me
+  chaveApiProvedor: altere-me-com-ao-menos-24-caracteres
+  externos:
+    habilitado: true
+    regiao: us-east-1
+    bancoArn: arn:aws:secretsmanager:us-east-1:000000000000:secret:rds-exemplo
+    aplicacaoArn: arn:aws:secretsmanager:us-east-1:000000000000:secret:orquestrapay-exemplo
+
+ingresso:
+  habilitado: false
+  classe: alb
+  host: api.orquestrapay.exemplo.com
+  certificadoArn: ""
+  politicaTls: ELBSecurityPolicy-TLS13-1-2-2021-06
+
+politicaRisco:
+  limiteValorAlto: "1000.00"
+  limiteValorMuitoAlto: "5000.00"
+  pontosValorAlto: 15
+  pontosValorMuitoAlto: 45
+  paisBase: BR
+  pontosPaisDivergente: 25
+  limiteComprasRecentes: 3
+  janelaComprasRecentes: 10m
+  pontosAltaVelocidade: 35
+  limiteClientesPorDispositivo: 3
+  janelaDispositivoCompartilhado: 24h
+  pontosDispositivoCompartilhado: 40
+  limiteReprovacao: 70
+
+servicos:
+  - chave: checkout
+    nome: servico-checkout
+    imagem: servico-checkout
+    banco: orquestrapay_checkout
+    bancoUsuario: checkout_app
+    bancoSenhaChave: banco-checkout-senha
+    replicas: 2
+    usaBanco: true
+    usaKafka: true
+    usaSeguranca: true
+    usaRedis: true
+    usaCriptografia: true
+    recursos:
+      requisicoes: { cpu: 250m, memoria: 512Mi }
+      limites: { cpu: "1", memoria: 768Mi }
+  - chave: estoque
+    nome: servico-estoque
+    imagem: servico-estoque
+    banco: orquestrapay_estoque
+    bancoUsuario: estoque_app
+    bancoSenhaChave: banco-estoque-senha
+    replicas: 2
+    usaBanco: true
+    usaKafka: true
+    usaSeguranca: true
+    recursos:
+      requisicoes: { cpu: 200m, memoria: 384Mi }
+      limites: { cpu: "1", memoria: 640Mi }
+  - chave: risco
+    nome: servico-risco
+    imagem: servico-risco
+    banco: orquestrapay_risco
+    bancoUsuario: risco_app
+    bancoSenhaChave: banco-risco-senha
+    replicas: 2
+    usaBanco: true
+    usaKafka: true
+    usaSeguranca: true
+    usaPoliticaRisco: true
+    recursos:
+      requisicoes: { cpu: 200m, memoria: 384Mi }
+      limites: { cpu: "1", memoria: 640Mi }
+  - chave: pagamento
+    nome: servico-pagamento
+    imagem: servico-pagamento
+    banco: orquestrapay_pagamento
+    bancoUsuario: pagamento_app
+    bancoSenhaChave: banco-pagamento-senha
+    replicas: 2
+    usaBanco: true
+    usaKafka: true
+    usaSeguranca: true
+    usaCriptografia: true
+    usaChaveProvedor: true
+    ambiente:
+      PROVEDOR_URL: http://simulador-provedor:8080
+    recursos:
+      requisicoes: { cpu: 250m, memoria: 512Mi }
+      limites: { cpu: "1", memoria: 768Mi }
+  - chave: razao
+    nome: servico-razao
+    imagem: servico-razao
+    banco: orquestrapay_razao
+    bancoUsuario: razao_app
+    bancoSenhaChave: banco-razao-senha
+    replicas: 2
+    usaBanco: true
+    usaKafka: true
+    usaSeguranca: true
+    recursos:
+      requisicoes: { cpu: 200m, memoria: 384Mi }
+      limites: { cpu: "1", memoria: 640Mi }
+  - chave: notificacao
+    nome: servico-notificacao
+    imagem: servico-notificacao
+    banco: orquestrapay_notificacao
+    bancoUsuario: notificacao_app
+    bancoSenhaChave: banco-notificacao-senha
+    replicas: 2
+    usaBanco: true
+    usaKafka: true
+    usaSeguranca: true
+    recursos:
+      requisicoes: { cpu: 150m, memoria: 384Mi }
+      limites: { cpu: 750m, memoria: 640Mi }
+  - chave: provedor
+    nome: simulador-provedor
+    imagem: simulador-provedor
+    replicas: 1
+    usaBanco: false
+    usaKafka: false
+    usaSeguranca: false
+    usaChaveProvedor: true
+    recursos:
+      requisicoes: { cpu: 100m, memoria: 256Mi }
+      limites: { cpu: 500m, memoria: 384Mi }
+
+autoscalonamento:
+  habilitado: true
+  minimoReplicas: 2
+  maximoReplicas: 8
+  cpuMedia: 70

@@ -1,0 +1,92 @@
+groups:
+  - name: disponibilidade-orquestrapay
+    rules:
+      - alert: ServicoOrquestraDePagamentosIndisponivel
+        expr: up{job="orquestrapay"} == 0
+        for: 2m
+        labels:
+          severidade: critica
+        annotations:
+          resumo: "Servico {{ $labels.instance }} indisponivel"
+          descricao: "O Prometheus nao consegue coletar o servico ha pelo menos dois minutos."
+
+      - alert: TaxaErrosHttpElevada
+        expr: |
+          sum(rate(http_server_requests_seconds_count{job="orquestrapay",status=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(http_server_requests_seconds_count{job="orquestrapay"}[5m])), 0.001)
+          > 0.02
+        for: 5m
+        labels:
+          severidade: alta
+        annotations:
+          resumo: "Mais de 2% das requisicoes terminam com erro 5xx"
+
+      - alert: LatenciaHttpP95Elevada
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le, application) (rate(http_server_requests_seconds_bucket[5m]))
+          ) > 1
+        for: 10m
+        labels:
+          severidade: media
+        annotations:
+          resumo: "Latencia p95 acima de um segundo em {{ $labels.application }}"
+
+      - alert: CompensacoesAcimaDoEsperado
+        expr: |
+          sum(increase(orquestrapay_compensacoes_iniciadas_total{job="orquestrapay"}[15m]))
+          /
+          clamp_min(sum(increase(orquestrapay_compras_iniciadas_total{job="orquestrapay"}[15m])), 1)
+          > 0.05
+        for: 5m
+        labels:
+          severidade: alta
+        annotations:
+          resumo: "Mais de 5% das compras exigiram compensacao nos ultimos 15 minutos"
+
+  - name: eventos-orquestrapay
+    rules:
+      - alert: OutboxComFilaElevada
+        expr: sum by (application) (orquestrapay_outbox_pendentes{job="orquestrapay"}) > 100
+        for: 5m
+        labels:
+          severidade: media
+        annotations:
+          resumo: "Outbox de {{ $labels.application }} acumula mais de 100 eventos"
+          descricao: "A publicacao nao acompanha a geracao de eventos ha pelo menos cinco minutos."
+
+      - alert: EventoOutboxMuitoAntigo
+        expr: max by (application) (orquestrapay_outbox_idade_mais_antiga_segundos{job="orquestrapay"}) > 120
+        for: 5m
+        labels:
+          severidade: alta
+        annotations:
+          resumo: "Evento pendente ha mais de dois minutos em {{ $labels.application }}"
+          descricao: "Verifique conectividade Kafka, tentativas e o ultimo erro registrado na outbox."
+
+      - alert: EventoMovidoParaQuarentena
+        expr: sum by (application) (increase(orquestrapay_outbox_descartados_total{job="orquestrapay"}[5m])) > 0
+        labels:
+          severidade: alta
+        annotations:
+          resumo: "Evento esgotou as tentativas em {{ $labels.application }}"
+          descricao: "O evento permanece no banco para diagnostico e reprocessamento controlado."
+
+      - alert: EventoEnviadoParaDlt
+        expr: sum by (application) (increase(orquestrapay_dlt_eventos_total{job="orquestrapay"}[5m])) > 0
+        labels:
+          severidade: alta
+        annotations:
+          resumo: "Consumidor de {{ $labels.application }} enviou evento para a DLT"
+          descricao: "Investigue a mensagem, a causa e a idempotencia antes de reprocessar."
+
+      - alert: AtrasoKafkaElevado
+        expr: max by (application, client_id) (kafka_consumer_fetch_manager_records_lag_max{job="orquestrapay"}) > 1000
+        for: 5m
+        labels:
+          severidade: media
+        annotations:
+          resumo: "Consumidor Kafka atrasado em {{ $labels.application }}"
+          descricao: "O consumidor {{ $labels.client_id }} acumula mais de mil registros ha cinco minutos."

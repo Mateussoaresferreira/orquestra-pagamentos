@@ -1,0 +1,5 @@
+br.com.orquestrapay.platform.config.ConfiguracaoCriptografia
+br.com.orquestrapay.platform.config.ConfiguracaoEventos
+br.com.orquestrapay.platform.config.ConfiguracaoFalhasEventos
+br.com.orquestrapay.platform.config.ConfiguracaoSeguranca
+br.com.orquestrapay.platform.config.ConfiguracaoWeb
