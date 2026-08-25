@@ -44,6 +44,7 @@
         <jacoco.version>0.8.14</jacoco.version>
         <jacoco.minimo.linhas>0.20</jacoco.minimo.linhas>
         <aws.msk.iam.version>2.3.7</aws.msk.iam.version>
+        <zxing.version>3.5.4</zxing.version>
     </properties>
 
     <dependencyManagement>
@@ -66,6 +67,16 @@
                 <groupId>io.apicurio</groupId>
                 <artifactId>apicurio-registry-avro-serde-kafka</artifactId>
                 <version>${apicurio.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.google.zxing</groupId>
+                <artifactId>core</artifactId>
+                <version>${zxing.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.google.zxing</groupId>
+                <artifactId>javase</artifactId>
+                <version>${zxing.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

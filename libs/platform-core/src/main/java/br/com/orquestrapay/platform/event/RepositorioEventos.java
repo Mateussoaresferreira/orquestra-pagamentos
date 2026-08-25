@@ -75,7 +75,11 @@ public class RepositorioEventos {
                                     WHERE anterior.id_compra = atual.id_compra
                                       AND anterior.ordem < atual.ordem
                                       AND anterior.publicado_em IS NULL
-                               )
+                                      AND (
+                                          anterior.descartado_em IS NULL
+                                          OR anterior.resolvido_em IS NULL
+                                      )
+                                )
                              ORDER BY atual.ordem
                              FOR UPDATE OF atual SKIP LOCKED
                              LIMIT :limite
@@ -123,6 +127,7 @@ public class RepositorioEventos {
                                ) AS pendentes,
                                COUNT(*) FILTER (
                                    WHERE descartado_em IS NOT NULL
+                                     AND resolvido_em IS NULL
                                ) AS quarentena,
                                COALESCE(
                                    EXTRACT(EPOCH FROM (
@@ -142,26 +147,45 @@ public class RepositorioEventos {
                 .single();
     }
 
-    public PaginaQuarentena listarQuarentena(UUID idEmpresa, int pagina, int tamanho) {
+    public PaginaQuarentena listarQuarentena(
+            UUID idEmpresa,
+            String status,
+            int pagina,
+            int tamanho) {
         long total = banco.sql("""
                         SELECT COUNT(*)
                           FROM evento_saida
-                         WHERE id_empresa = :idEmpresa AND descartado_em IS NOT NULL
+                         WHERE id_empresa = :idEmpresa
+                           AND descartado_em IS NOT NULL
+                           AND (
+                               :status = 'TODAS'
+                               OR (:status = 'ATIVA' AND resolvido_em IS NULL)
+                               OR (:status = 'RESOLVIDA' AND resolvido_em IS NOT NULL)
+                           )
                         """)
                 .param("idEmpresa", idEmpresa)
+                .param("status", status)
                 .query(Long.class)
                 .single();
         List<EventoQuarentena> itens = banco.sql("""
                         SELECT id_evento, tipo, versao, id_correlacao, id_compra,
-                               origem, tentativas, ultimo_erro, ocorrido_em, descartado_em
+                               origem, tentativas, reprocessamentos, ultimo_erro,
+                               ocorrido_em, descartado_em, resolvido_em, motivo_resolucao
                           FROM evento_saida
-                         WHERE id_empresa = :idEmpresa AND descartado_em IS NOT NULL
+                         WHERE id_empresa = :idEmpresa
+                           AND descartado_em IS NOT NULL
+                           AND (
+                               :status = 'TODAS'
+                               OR (:status = 'ATIVA' AND resolvido_em IS NULL)
+                               OR (:status = 'RESOLVIDA' AND resolvido_em IS NOT NULL)
+                           )
                          ORDER BY descartado_em DESC, id_evento
                          LIMIT :tamanho OFFSET :deslocamento
                         """)
                 .param("idEmpresa", idEmpresa)
+                .param("status", status)
                 .param("tamanho", tamanho)
-                .param("deslocamento", pagina * tamanho)
+                .param("deslocamento", (long) pagina * tamanho)
                 .query((resultado, linha) -> new EventoQuarentena(
                         resultado.getObject("id_evento", UUID.class),
                         resultado.getString("tipo"),
@@ -170,9 +194,13 @@ public class RepositorioEventos {
                         resultado.getObject("id_compra", UUID.class),
                         resultado.getString("origem"),
                         resultado.getInt("tentativas"),
+                        resultado.getInt("reprocessamentos"),
                         abreviar(resultado.getString("ultimo_erro")),
                         DatasSql.ler(resultado, "ocorrido_em"),
-                        DatasSql.ler(resultado, "descartado_em")))
+                        DatasSql.ler(resultado, "descartado_em"),
+                        resultado.getObject("resolvido_em") == null ? "ATIVA" : "RESOLVIDA",
+                        DatasSql.ler(resultado, "resolvido_em"),
+                        resultado.getString("motivo_resolucao")))
                 .list();
         return new PaginaQuarentena(itens, pagina, tamanho, total);
     }
@@ -181,41 +209,131 @@ public class RepositorioEventos {
             UUID idEmpresa,
             UUID idEvento,
             String responsavel,
+            String motivo,
             Instant agora) {
-        int atualizados = banco.sql("""
-                        UPDATE evento_saida
-                           SET tentativas = 0,
-                               ultimo_erro = NULL,
-                               proxima_tentativa_em = :agora,
-                               descartado_em = NULL,
-                               bloqueado_ate = NULL,
-                               token_bloqueio = NULL
-                         WHERE id_evento = :idEvento
-                           AND id_empresa = :idEmpresa
-                           AND descartado_em IS NOT NULL
-                        """)
-                .param("idEvento", idEvento)
-                .param("idEmpresa", idEmpresa)
-                .param("agora", DatasSql.gravar(agora))
-                .update();
-        if (atualizados == 0) {
-            return false;
-        }
-        banco.sql("""
+        return banco.sql("""
+                        WITH alvo AS (
+                            SELECT id_evento, tentativas, ultimo_erro
+                              FROM evento_saida
+                             WHERE id_evento = :idEvento
+                               AND id_empresa = :idEmpresa
+                               AND descartado_em IS NOT NULL
+                               AND resolvido_em IS NULL
+                             FOR UPDATE
+                        ), atualizado AS (
+                            UPDATE evento_saida evento
+                               SET tentativas = 0,
+                                   reprocessamentos = reprocessamentos + 1,
+                                   ultimo_erro = NULL,
+                                   proxima_tentativa_em = :agora,
+                                   descartado_em = NULL,
+                                   bloqueado_ate = NULL,
+                                   token_bloqueio = NULL
+                              FROM alvo
+                             WHERE evento.id_evento = alvo.id_evento
+                            RETURNING evento.id_evento,
+                                      alvo.tentativas,
+                                      alvo.ultimo_erro
+                        )
                         INSERT INTO auditoria_quarentena (
                             id_auditoria, id_evento, acao,
-                            responsavel, detalhes, registrada_em
-                        ) VALUES (
-                            :idAuditoria, :idEvento, 'REPROCESSAR',
-                            :responsavel, 'Tentativas reiniciadas pela API administrativa', :agora
+                            responsavel, detalhes, registrada_em,
+                            tentativas_anteriores, erro_anterior, motivo
                         )
+                        SELECT :idAuditoria, id_evento, 'REPROCESSAR',
+                               :responsavel, 'Evento devolvido ao inicio da fila', :agora,
+                               tentativas, ultimo_erro, :motivo
+                          FROM atualizado
+                        RETURNING id_auditoria
                         """)
                 .param("idAuditoria", UUID.randomUUID())
                 .param("idEvento", idEvento)
+                .param("idEmpresa", idEmpresa)
                 .param("responsavel", responsavel)
+                .param("motivo", motivo)
                 .param("agora", DatasSql.gravar(agora))
-                .update();
-        return true;
+                .query(UUID.class)
+                .optional()
+                .isPresent();
+    }
+
+    public boolean descartarQuarentenaDefinitivamente(
+            UUID idEmpresa,
+            UUID idEvento,
+            String responsavel,
+            String motivo,
+            Instant agora) {
+        return banco.sql("""
+                        WITH alvo AS (
+                            SELECT id_evento, tentativas, ultimo_erro
+                              FROM evento_saida
+                             WHERE id_evento = :idEvento
+                               AND id_empresa = :idEmpresa
+                               AND descartado_em IS NOT NULL
+                               AND resolvido_em IS NULL
+                             FOR UPDATE
+                        ), atualizado AS (
+                            UPDATE evento_saida evento
+                               SET resolvido_em = :agora,
+                                   motivo_resolucao = :motivo,
+                                   bloqueado_ate = NULL,
+                                   token_bloqueio = NULL
+                              FROM alvo
+                             WHERE evento.id_evento = alvo.id_evento
+                            RETURNING evento.id_evento,
+                                      alvo.tentativas,
+                                      alvo.ultimo_erro
+                        )
+                        INSERT INTO auditoria_quarentena (
+                            id_auditoria, id_evento, acao,
+                            responsavel, detalhes, registrada_em,
+                            tentativas_anteriores, erro_anterior, motivo
+                        )
+                        SELECT :idAuditoria, id_evento, 'DESCARTAR_DEFINITIVAMENTE',
+                               :responsavel, 'Evento removido da sequencia ativa', :agora,
+                               tentativas, ultimo_erro, :motivo
+                          FROM atualizado
+                        RETURNING id_auditoria
+                        """)
+                .param("idAuditoria", UUID.randomUUID())
+                .param("idEvento", idEvento)
+                .param("idEmpresa", idEmpresa)
+                .param("responsavel", responsavel)
+                .param("motivo", motivo)
+                .param("agora", DatasSql.gravar(agora))
+                .query(UUID.class)
+                .optional()
+                .isPresent();
+    }
+
+    public List<AuditoriaQuarentena> listarAuditoriaQuarentena(
+            UUID idEmpresa,
+            UUID idEvento) {
+        return banco.sql("""
+                        SELECT auditoria.id_auditoria, auditoria.acao,
+                               auditoria.responsavel, auditoria.detalhes,
+                               auditoria.tentativas_anteriores,
+                               auditoria.erro_anterior, auditoria.motivo,
+                               auditoria.registrada_em
+                          FROM auditoria_quarentena auditoria
+                          JOIN evento_saida evento
+                            ON evento.id_evento = auditoria.id_evento
+                         WHERE evento.id_empresa = :idEmpresa
+                           AND evento.id_evento = :idEvento
+                         ORDER BY auditoria.registrada_em, auditoria.id_auditoria
+                        """)
+                .param("idEmpresa", idEmpresa)
+                .param("idEvento", idEvento)
+                .query((resultado, linha) -> new AuditoriaQuarentena(
+                        resultado.getObject("id_auditoria", UUID.class),
+                        resultado.getString("acao"),
+                        resultado.getString("responsavel"),
+                        resultado.getString("detalhes"),
+                        resultado.getObject("tentativas_anteriores", Integer.class),
+                        abreviar(resultado.getString("erro_anterior")),
+                        resultado.getString("motivo"),
+                        DatasSql.ler(resultado, "registrada_em")))
+                .list();
     }
 
     public boolean marcarPublicado(UUID idEvento, UUID tokenBloqueio, Instant publicadoEm) {

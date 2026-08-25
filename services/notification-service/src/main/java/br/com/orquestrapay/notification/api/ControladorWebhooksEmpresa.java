@@ -56,7 +56,7 @@ public class ControladorWebhooksEmpresa {
     @Operation(summary = "Lista o historico auditavel de entregas")
     PaginaEntregasWebhook listar(
             @RequestHeader("X-Empresa-Id") UUID idEmpresa,
-            @RequestParam(defaultValue = "0") @Min(0) int pagina,
+            @RequestParam(defaultValue = "0") @Min(0) @Max(100_000) int pagina,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int tamanho) {
         return webhooks.listar(idEmpresa, pagina, tamanho);
     }

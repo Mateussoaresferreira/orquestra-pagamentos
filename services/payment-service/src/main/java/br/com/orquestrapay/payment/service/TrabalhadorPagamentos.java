@@ -7,7 +7,9 @@ import br.com.orquestrapay.payment.api.PedidoCobrancaPixProvedor;
 import br.com.orquestrapay.payment.api.PedidoEstornoProvedor;
 import br.com.orquestrapay.payment.config.PropriedadesPagamentos;
 import br.com.orquestrapay.payment.domain.OperacaoPagamento;
+import br.com.orquestrapay.payment.domain.TipoOperacaoPagamento;
 import br.com.orquestrapay.payment.integration.RoteadorProvedores;
+import br.com.orquestrapay.payment.integration.ExcecaoComunicacaoProvedor;
 import br.com.orquestrapay.platform.security.ProtecaoTokenPagamento;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -57,6 +59,13 @@ public class TrabalhadorPagamentos {
                 case CRIAR_PIX -> criarPix(operacao);
                 case ESTORNAR -> estornar(operacao);
             }
+        } catch (ExcecaoComunicacaoProvedor falha) {
+            if (!falha.permiteFallback()
+                    && operacao.tipo() != TipoOperacaoPagamento.ESTORNAR) {
+                fila.registrarResultadoAmbiguo(operacao, falha);
+                return;
+            }
+            fila.registrarFalha(operacao, falha);
         } catch (RuntimeException falha) {
             fila.registrarFalha(operacao, falha);
         }

@@ -90,7 +90,9 @@ class TesteClienteProvedor {
 
             assertThatThrownBy(() -> cliente.autorizar(pedido))
                     .isInstanceOf(ExcecaoComunicacaoProvedor.class)
-                    .hasCauseInstanceOf(BulkheadFullException.class);
+                    .hasCauseInstanceOf(BulkheadFullException.class)
+                    .extracting(falha -> ((ExcecaoComunicacaoProvedor) falha).natureza())
+                    .isEqualTo(NaturezaFalhaProvedor.SEGURA_PARA_FALLBACK);
             verify(limitador).consumir("principal", propriedades);
 
             liberarProvedor.countDown();

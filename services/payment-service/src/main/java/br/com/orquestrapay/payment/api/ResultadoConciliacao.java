@@ -5,18 +5,20 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record ResultadoConciliacao(
+        UUID idConciliacao,
+        String provedor,
+        String identificadorExtrato,
+        Instant periodoInicio,
+        Instant periodoFim,
+        int registrosProvedor,
+        int registrosLocais,
+        int registrosDuplicados,
         int registrosAnalisados,
         int divergenciasEncontradas,
         List<String> divergencias,
-        UUID idConciliacao,
-        Instant concluidaEm) {
-
-    public ResultadoConciliacao(
-            int registrosAnalisados,
-            int divergenciasEncontradas,
-            List<String> divergencias) {
-        this(registrosAnalisados, divergenciasEncontradas, divergencias, null, null);
-    }
+        String status,
+        Instant concluidaEm,
+        boolean reaproveitada) {
 
     public ResultadoConciliacao {
         divergencias = List.copyOf(divergencias);

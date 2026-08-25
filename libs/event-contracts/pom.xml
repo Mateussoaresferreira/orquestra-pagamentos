@@ -11,6 +11,7 @@
     </parent>
     <artifactId>contratos-eventos</artifactId>
     <name>Contratos de eventos</name>
+    <properties><jacoco.minimo.linhas>0.30</jacoco.minimo.linhas></properties>
 
     <dependencies>
         <dependency>

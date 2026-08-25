@@ -6,6 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties("orquestrapay.notificacoes")
 public record PropriedadesNotificacoes(
+        String remetente,
         int tamanhoLote,
         int concorrencia,
         int maximoTentativas,
@@ -14,6 +15,13 @@ public record PropriedadesNotificacoes(
         Duration atrasoMaximo) {
 
     public PropriedadesNotificacoes {
+        remetente = remetente == null ? null : remetente.trim();
+        if (remetente == null
+                || remetente.isBlank()
+                || !remetente.contains("@")
+                || remetente.length() > 254) {
+            throw new IllegalArgumentException("O remetente das notificacoes e invalido");
+        }
         if (tamanhoLote < 1 || tamanhoLote > 500) {
             throw new IllegalArgumentException("O tamanho do lote deve estar entre 1 e 500");
         }
@@ -26,6 +34,9 @@ public record PropriedadesNotificacoes(
         validarDuracao(duracaoBloqueio, "duracaoBloqueio");
         validarDuracao(atrasoBase, "atrasoBase");
         validarDuracao(atrasoMaximo, "atrasoMaximo");
+        if (atrasoMaximo.compareTo(atrasoBase) < 0) {
+            throw new IllegalArgumentException("O atraso maximo deve ser maior ou igual ao atraso base");
+        }
     }
 
     private static void validarDuracao(Duration duracao, String nome) {

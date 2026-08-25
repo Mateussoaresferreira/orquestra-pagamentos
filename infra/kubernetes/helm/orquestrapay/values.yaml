@@ -145,7 +145,7 @@ servicos:
     usaBanco: true
     usaKafka: true
     concorrenciaKafka: 4
-    concorrenciaOutbox: 4
+    concorrenciaOutbox: 50
     grupoKafka: checkout-orquestrador-v1
     limiteLagKafka: 100
     usaSeguranca: true
@@ -165,7 +165,7 @@ servicos:
     usaBanco: true
     usaKafka: true
     concorrenciaKafka: 1
-    concorrenciaOutbox: 4
+    concorrenciaOutbox: 20
     grupoKafka: estoque-v1
     limiteLagKafka: 50
     usaSeguranca: true
@@ -183,7 +183,7 @@ servicos:
     usaBanco: true
     usaKafka: true
     concorrenciaKafka: 1
-    concorrenciaOutbox: 4
+    concorrenciaOutbox: 20
     grupoKafka: risco-v1
     limiteLagKafka: 50
     usaSeguranca: true
@@ -202,7 +202,7 @@ servicos:
     usaBanco: true
     usaKafka: true
     concorrenciaKafka: 1
-    concorrenciaOutbox: 4
+    concorrenciaOutbox: 20
     grupoKafka: pagamento-v1
     limiteLagKafka: 25
     usaSeguranca: true
@@ -224,7 +224,7 @@ servicos:
     usaBanco: true
     usaKafka: true
     concorrenciaKafka: 1
-    concorrenciaOutbox: 4
+    concorrenciaOutbox: 20
     grupoKafka: razao-v1
     limiteLagKafka: 25
     usaSeguranca: true
@@ -242,7 +242,7 @@ servicos:
     usaBanco: true
     usaKafka: true
     concorrenciaKafka: 1
-    concorrenciaOutbox: 4
+    concorrenciaOutbox: 20
     grupoKafka: notificacao-v1
     limiteLagKafka: 50
     usaSeguranca: true

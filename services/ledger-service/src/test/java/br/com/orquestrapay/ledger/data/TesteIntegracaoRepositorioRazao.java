@@ -1,6 +1,7 @@
 package br.com.orquestrapay.ledger.data;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
@@ -40,6 +41,12 @@ class TesteIntegracaoRepositorioRazao {
                 .migrate();
         banco = JdbcClient.create(fonteDados);
         repositorio = new RepositorioRazao(banco);
+    }
+
+    @Test
+    void deveAdquirirBloqueioTransacionalDaCompraSemInterpretarRetornoVoid() {
+        assertThatCode(() -> repositorio.bloquearCompra(UUID.randomUUID(), UUID.randomUUID()))
+                .doesNotThrowAnyException();
     }
 
     @Test

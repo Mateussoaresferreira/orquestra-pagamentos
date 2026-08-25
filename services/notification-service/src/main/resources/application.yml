@@ -7,6 +7,19 @@ spring:
     username: ${BANCO_USUARIO:orquestrapay}
     password: ${BANCO_SENHA}
   flyway.locations: classpath:db/migration/shared,classpath:db/migration/service
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORTA:1025}
+    username: ${SMTP_USUARIO:}
+    password: ${SMTP_SENHA:}
+    properties:
+      mail.smtp.auth: ${SMTP_AUTENTICACAO:false}
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS:false}
+      mail.smtp.starttls.required: ${SMTP_STARTTLS_OBRIGATORIO:${SMTP_STARTTLS:false}}
+      mail.smtp.ssl.checkserveridentity: ${SMTP_VALIDAR_IDENTIDADE_HOST:true}
+      mail.smtp.connectiontimeout: ${SMTP_TEMPO_CONEXAO_MS:2000}
+      mail.smtp.timeout: ${SMTP_TEMPO_RESPOSTA_MS:5000}
+      mail.smtp.writetimeout: ${SMTP_TEMPO_ESCRITA_MS:5000}
   kafka:
     bootstrap-servers: ${KAFKA_SERVIDORES:localhost:9092}
     consumer:
@@ -61,6 +74,7 @@ orquestrapay:
     intervalo: ${RETENCAO_EVENTOS_INTERVALO:1h}
     atraso-inicial: ${RETENCAO_EVENTOS_ATRASO_INICIAL:5m}
   notificacoes:
+    remetente: ${NOTIFICACOES_REMETENTE:nao-responda@orquestrapay.local}
     tamanho-lote: ${NOTIFICACOES_TAMANHO_LOTE:50}
     concorrencia: ${NOTIFICACOES_CONCORRENCIA:8}
     intervalo: ${NOTIFICACOES_INTERVALO_MS:250}

@@ -26,7 +26,7 @@ public class ServicoFilaEventos {
     public List<EventoPendente> reivindicar() {
         Instant agora = relogio.instant();
         return repositorio.reivindicarPendentes(
-                propriedades.tamanhoLote(),
+                Math.min(propriedades.tamanhoLote(), propriedades.concorrenciaPublicacao()),
                 propriedades.maximoTentativas(),
                 agora,
                 agora.plus(propriedades.duracaoBloqueio()));

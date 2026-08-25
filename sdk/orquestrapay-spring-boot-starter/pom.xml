@@ -13,7 +13,7 @@
     <artifactId>orquestrapay-spring-boot-starter</artifactId>
     <name>Starter Spring Boot da Orquestra de Pagamentos</name>
     <description>Cliente tipado para integrar aplicacoes Spring ao OrquestraPay</description>
-    <properties><jacoco.minimo.linhas>0.30</jacoco.minimo.linhas></properties>
+    <properties><jacoco.minimo.linhas>0.65</jacoco.minimo.linhas></properties>
 
     <dependencies>
         <dependency>

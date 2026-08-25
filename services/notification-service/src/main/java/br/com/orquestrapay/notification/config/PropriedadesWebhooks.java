@@ -27,6 +27,13 @@ public record PropriedadesWebhooks(
         validar(atrasoMaximo, "atrasoMaximo");
         validar(tempoConexao, "tempoConexao");
         validar(tempoResposta, "tempoResposta");
+        if (atrasoMaximo.compareTo(atrasoBase) < 0) {
+            throw new IllegalArgumentException("O atraso maximo deve ser maior ou igual ao atraso base");
+        }
+        if (duracaoBloqueio.compareTo(tempoConexao.plus(tempoResposta)) <= 0) {
+            throw new IllegalArgumentException(
+                    "A duracao do bloqueio deve superar os tempos de conexao e resposta");
+        }
     }
 
     private static void validar(Duration valor, String nome) {

@@ -88,7 +88,7 @@ spec:
             - { name: TOPICOS_PARTICOES, value: {{ $raiz.Values.global.kafka.particoes | quote }} }
             - { name: REGISTRO_ESQUEMAS_URL, value: {{ $raiz.Values.global.registroEsquemas.url | quote }} }
             - { name: KAFKA_CONCORRENCIA, value: {{ default 1 $servico.concorrenciaKafka | quote }} }
-            - { name: ORQUESTRAPAY_EVENTOS_CONCORRENCIA_PUBLICACAO, value: {{ default 4 $servico.concorrenciaOutbox | quote }} }
+            - { name: ORQUESTRAPAY_EVENTOS_CONCORRENCIA_PUBLICACAO, value: {{ default 20 $servico.concorrenciaOutbox | quote }} }
             {{- if $raiz.Values.global.kafka.autenticacaoIam }}
             - { name: SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL, value: "SASL_SSL" }
             - { name: SPRING_KAFKA_PROPERTIES_SASL_MECHANISM, value: "AWS_MSK_IAM" }

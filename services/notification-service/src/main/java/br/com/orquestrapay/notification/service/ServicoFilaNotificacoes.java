@@ -3,7 +3,6 @@ package br.com.orquestrapay.notification.service;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
-import java.util.UUID;
 
 import br.com.orquestrapay.notification.config.PropriedadesNotificacoes;
 import br.com.orquestrapay.notification.data.RepositorioNotificacoes;
@@ -31,24 +30,24 @@ public class ServicoFilaNotificacoes {
     public List<NotificacaoPendente> reivindicar() {
         var agora = relogio.instant();
         return repositorio.reivindicarPendentes(
-                propriedades.tamanhoLote(),
+                Math.min(propriedades.tamanhoLote(), propriedades.concorrencia()),
                 propriedades.maximoTentativas(),
                 agora,
                 agora.plus(propriedades.duracaoBloqueio()));
     }
 
     @Transactional
-    public void confirmar(UUID idNotificacao) {
-        repositorio.marcarEnviada(idNotificacao, relogio.instant());
+    public boolean confirmar(NotificacaoPendente notificacao) {
+        return repositorio.marcarEnviada(notificacao, relogio.instant());
     }
 
     @Transactional
-    public void falhar(NotificacaoPendente notificacao, String erro) {
-        int tentativaAtual = notificacao.tentativas() + 1;
+    public boolean falhar(NotificacaoPendente notificacao, String erro) {
+        int tentativaAtual = notificacao.tentativas();
         boolean falhaDefinitiva = tentativaAtual >= propriedades.maximoTentativas();
         var agora = relogio.instant();
-        repositorio.registrarFalha(
-                notificacao.idNotificacao(),
+        return repositorio.registrarFalha(
+                notificacao,
                 erro,
                 agora.plus(calcularAtraso(tentativaAtual)),
                 falhaDefinitiva ? agora : null);

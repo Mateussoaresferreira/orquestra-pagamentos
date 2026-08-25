@@ -108,6 +108,36 @@ class TesteValidacaoNovaCompra {
     }
 
     @Test
+    void deveRejeitarZeroParcelasInformadoExplicitamenteNoJson() throws Exception {
+        var idProduto = java.util.UUID.randomUUID();
+        var json = """
+                {
+                  "idCliente": "cliente-parcela-invalida",
+                  "emailCliente": "cliente@exemplo.com",
+                  "moeda": "BRL",
+                  "pais": "BR",
+                  "identificadorDispositivo": "dispositivo-001",
+                  "tokenPagamento": "tok_aprovado",
+                  "itens": [{
+                    "idProduto": "%s",
+                    "quantidade": 1,
+                    "precoUnitario": 19.90
+                  }],
+                  "metodoPagamento": "CARTAO",
+                  "parcelas": 0
+                }
+                """.formatted(idProduto);
+
+        var compra = new ObjectMapper().readValue(json, NovaCompra.class);
+        var violacoes = validador.validate(compra);
+
+        assertThat(compra.parcelas()).isZero();
+        assertThat(violacoes)
+                .extracting(violacao -> violacao.getPropertyPath().toString())
+                .containsExactly("parcelas");
+    }
+
+    @Test
     void deveRejeitarQuantidadeEPrecoForaDosLimitesDoBanco() {
         var item = new NovoItemCompra(
                 java.util.UUID.randomUUID(),
@@ -119,6 +149,48 @@ class TesteValidacaoNovaCompra {
         assertThat(violacoes)
                 .extracting(violacao -> violacao.getPropertyPath().toString())
                 .contains("itens[0].quantidade", "itens[0].precoUnitario");
+    }
+
+    @Test
+    void deveRejeitarCaracteresDeControleAntesDeAcessarOBanco() {
+        var compra = new NovaCompra(
+                "cliente\u0000invalido",
+                "cliente\u0000@exemplo.com",
+                "BRL",
+                "BR",
+                "dispositivo\u0000invalido",
+                "token\u0000invalido",
+                List.of(itemValido()),
+                br.com.orquestrapay.contracts.MetodoPagamento.CARTAO,
+                1);
+
+        var violacoes = validador.validate(compra);
+
+        assertThat(violacoes)
+                .extracting(violacao -> violacao.getPropertyPath().toString())
+                .contains(
+                        "idCliente",
+                        "emailCliente",
+                        "identificadorDispositivo",
+                        "tokenPagamento");
+    }
+
+    @Test
+    void deveRejeitarEmailComSufixoInjetadoAntesDeCriarACompra() {
+        var compra = new NovaCompra(
+                "cliente-001",
+                "cliente@exemplo.com'",
+                "BRL",
+                "BR",
+                "dispositivo-001",
+                "tok_teste_seguro",
+                List.of(itemValido()));
+
+        var violacoes = validador.validate(compra);
+
+        assertThat(violacoes)
+                .extracting(violacao -> violacao.getPropertyPath().toString())
+                .containsExactly("emailCliente");
     }
 
     private NovaCompra novaCompra(List<NovoItemCompra> itens) {

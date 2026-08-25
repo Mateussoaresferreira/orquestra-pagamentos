@@ -132,7 +132,10 @@ public class RepositorioPagamentos {
                         UPDATE pagamento
                            SET status = :status, atualizado_em = :agora
                          WHERE id_pagamento = :idPagamento
-                           AND status IN ('PENDENTE', 'ESTORNO_PENDENTE', 'PROCESSANDO', 'ESTORNANDO')
+                           AND status IN (
+                               'PENDENTE', 'CONFIRMACAO_PENDENTE', 'ESTORNO_PENDENTE',
+                               'PROCESSANDO', 'ESTORNANDO'
+                           )
                         """)
                 .param("status", status.name())
                 .param("agora", DatasSql.gravar(agora))
@@ -158,7 +161,7 @@ public class RepositorioPagamentos {
                                motivo = :motivo,
                                atualizado_em = :agora
                          WHERE id_pagamento = :idPagamento
-                           AND status IN ('PENDENTE', 'PROCESSANDO')
+                           AND status IN ('PENDENTE', 'PROCESSANDO', 'CONFIRMACAO_PENDENTE')
                         """)
                 .param("status", status.name())
                 .param("provedor", provedor)
@@ -252,8 +255,8 @@ public class RepositorioPagamentos {
                 .list();
     }
 
-    public void confirmarPix(UUID idPagamento, String idAutorizacao, Instant agora) {
-        banco.sql("""
+    public boolean confirmarPix(UUID idPagamento, String idAutorizacao, Instant agora) {
+        int atualizados = banco.sql("""
                         UPDATE pagamento
                            SET status = 'AUTORIZADO',
                                id_autorizacao = :idAutorizacao,
@@ -266,11 +269,14 @@ public class RepositorioPagamentos {
                 .param("agora", DatasSql.gravar(agora))
                 .param("idPagamento", idPagamento)
                 .update();
-        registrarTentativa(idPagamento, "CONFIRMACAO_PIX", "AUTORIZADO", idAutorizacao, agora);
+        if (atualizados == 1) {
+            registrarTentativa(idPagamento, "CONFIRMACAO_PIX", "AUTORIZADO", idAutorizacao, agora);
+        }
+        return atualizados == 1;
     }
 
-    public void expirarPix(UUID idPagamento, String motivo, Instant agora) {
-        banco.sql("""
+    public boolean expirarPix(UUID idPagamento, String motivo, Instant agora) {
+        int atualizados = banco.sql("""
                         UPDATE pagamento
                            SET status = 'EXPIRADO', motivo = :motivo, atualizado_em = :agora
                          WHERE id_pagamento = :idPagamento
@@ -280,7 +286,40 @@ public class RepositorioPagamentos {
                 .param("agora", DatasSql.gravar(agora))
                 .param("idPagamento", idPagamento)
                 .update();
-        registrarTentativa(idPagamento, "CONFIRMACAO_PIX", "EXPIRADO", motivo, agora);
+        if (atualizados == 1) {
+            registrarTentativa(idPagamento, "CONFIRMACAO_PIX", "EXPIRADO", motivo, agora);
+        }
+        return atualizados == 1;
+    }
+
+    public boolean agendarEstornoPixConfirmadoAposExpiracao(
+            UUID idPagamento,
+            String idAutorizacao,
+            Instant agora) {
+        String motivo = "PIX confirmado apos a expiracao; devolucao automatica pendente";
+        int atualizados = banco.sql("""
+                        UPDATE pagamento
+                           SET status = 'ESTORNO_PENDENTE',
+                               id_autorizacao = :idAutorizacao,
+                               motivo = :motivo,
+                               atualizado_em = :agora
+                         WHERE id_pagamento = :idPagamento
+                           AND status = 'EXPIRADO'
+                        """)
+                .param("idAutorizacao", idAutorizacao)
+                .param("motivo", motivo)
+                .param("agora", DatasSql.gravar(agora))
+                .param("idPagamento", idPagamento)
+                .update();
+        if (atualizados == 1) {
+            registrarTentativa(
+                    idPagamento,
+                    "CONFIRMACAO_PIX",
+                    "CONFIRMADO_APOS_EXPIRACAO",
+                    motivo,
+                    agora);
+        }
+        return atualizados == 1;
     }
 
     public boolean marcarEstornoPendente(UUID idPagamento, Instant agora) {
@@ -296,18 +335,21 @@ public class RepositorioPagamentos {
                 .update() == 1;
     }
 
-    public void marcarEstornado(UUID idPagamento, String protocolo, Instant agora) {
-        banco.sql("""
+    public boolean marcarEstornado(UUID idPagamento, String protocolo, Instant agora) {
+        int atualizados = banco.sql("""
                         UPDATE pagamento
                            SET status = 'ESTORNADO', motivo = :motivo, atualizado_em = :agora
                          WHERE id_pagamento = :idPagamento
-                           AND status IN ('AUTORIZADO', 'ESTORNO_PENDENTE', 'ESTORNANDO')
+                           AND status IN ('AUTORIZADO', 'ESTORNO_PENDENTE', 'ESTORNANDO', 'EXPIRADO')
                         """)
                 .param("idPagamento", idPagamento)
                 .param("motivo", "Estorno confirmado: " + protocolo)
                 .param("agora", DatasSql.gravar(agora))
                 .update();
-        registrarTentativa(idPagamento, "ESTORNO", "ESTORNADO", protocolo, agora);
+        if (atualizados == 1) {
+            registrarTentativa(idPagamento, "ESTORNO", "ESTORNADO", protocolo, agora);
+        }
+        return atualizados == 1;
     }
 
     public void marcarFalhaTecnica(UUID idPagamento, String motivo, Instant agora) {
@@ -320,6 +362,27 @@ public class RepositorioPagamentos {
                          WHERE id_pagamento = :idPagamento
                            AND status IN ('PENDENTE', 'PROCESSANDO', 'ESTORNO_PENDENTE', 'ESTORNANDO')
                         """)
+                .param("motivo", limitar(motivo, 2_000))
+                .param("agora", DatasSql.gravar(agora))
+                .param("idPagamento", idPagamento)
+                .update();
+    }
+
+    public void marcarConfirmacaoPendente(
+            UUID idPagamento,
+            String provedor,
+            String motivo,
+            Instant agora) {
+        banco.sql("""
+                        UPDATE pagamento
+                           SET status = 'CONFIRMACAO_PENDENTE',
+                               provedor = :provedor,
+                               motivo = :motivo,
+                               atualizado_em = :agora
+                         WHERE id_pagamento = :idPagamento
+                           AND status IN ('PENDENTE', 'PROCESSANDO', 'CONFIRMACAO_PENDENTE')
+                        """)
+                .param("provedor", provedor)
                 .param("motivo", limitar(motivo, 2_000))
                 .param("agora", DatasSql.gravar(agora))
                 .param("idPagamento", idPagamento)
@@ -370,6 +433,60 @@ public class RepositorioPagamentos {
                 .collect(Collectors.toUnmodifiableMap(
                         RespostaPagamento::idPagamento,
                         Function.identity()));
+    }
+
+    public Map<UUID, PagamentoConciliavel> buscarConciliaveisPorIds(
+            UUID idEmpresa,
+            List<UUID> idsPagamentos) {
+        if (idsPagamentos.isEmpty()) {
+            return Map.of();
+        }
+
+        return banco.sql("""
+                        SELECT id_pagamento, valor, moeda, status,
+                               id_autorizacao, provedor, criado_em
+                          FROM pagamento
+                         WHERE id_empresa = :idEmpresa
+                           AND id_pagamento IN (:idsPagamentos)
+                        """)
+                .param("idEmpresa", idEmpresa)
+                .param("idsPagamentos", idsPagamentos)
+                .query(this::mapearPagamentoConciliavel)
+                .list()
+                .stream()
+                .collect(Collectors.toUnmodifiableMap(
+                        PagamentoConciliavel::idPagamento,
+                        Function.identity()));
+    }
+
+    public List<PagamentoConciliavel> buscarConciliaveisNaJanela(
+            UUID idEmpresa,
+            String provedor,
+            String moeda,
+            Instant periodoInicio,
+            Instant periodoFim,
+            int limite) {
+        return banco.sql("""
+                        SELECT id_pagamento, valor, moeda, status,
+                               id_autorizacao, provedor, criado_em
+                          FROM pagamento
+                         WHERE id_empresa = :idEmpresa
+                           AND provedor = :provedor
+                           AND moeda = :moeda
+                           AND criado_em >= :periodoInicio
+                           AND criado_em < :periodoFim
+                           AND status IN ('AUTORIZADO', 'RECUSADO', 'ESTORNADO')
+                         ORDER BY criado_em, id_pagamento
+                         LIMIT :limite
+                        """)
+                .param("idEmpresa", idEmpresa)
+                .param("provedor", provedor)
+                .param("moeda", moeda)
+                .param("periodoInicio", DatasSql.gravar(periodoInicio))
+                .param("periodoFim", DatasSql.gravar(periodoFim))
+                .param("limite", limite)
+                .query(this::mapearPagamentoConciliavel)
+                .list();
     }
 
     public void registrarDivergencia(
@@ -451,21 +568,174 @@ public class RepositorioPagamentos {
         return idConciliacao;
     }
 
+    public InicioConciliacao iniciarConciliacao(
+            UUID idEmpresa,
+            String provedor,
+            String identificadorExtrato,
+            String hashExtrato,
+            String moeda,
+            Instant periodoInicio,
+            Instant periodoFim,
+            int registrosProvedor,
+            Instant iniciadaEm) {
+        UUID idConciliacao = UUID.randomUUID();
+        int inseridos = banco.sql("""
+                        INSERT INTO conciliacao (
+                            id_conciliacao, id_empresa, provedor,
+                            identificador_extrato, hash_extrato, moeda,
+                            periodo_inicio, periodo_fim, registros_provedor,
+                            registros_locais, registros_duplicados,
+                            registros_analisados, divergencias_encontradas,
+                            status, iniciada_em, concluida_em
+                        ) VALUES (
+                            :idConciliacao, :idEmpresa, :provedor,
+                            :identificadorExtrato, :hashExtrato, :moeda,
+                            :periodoInicio, :periodoFim, :registrosProvedor,
+                            0, 0, 0, 0,
+                            'PROCESSANDO', :iniciadaEm, NULL
+                        )
+                        ON CONFLICT (id_empresa, provedor, identificador_extrato)
+                            WHERE provedor IS NOT NULL AND identificador_extrato IS NOT NULL
+                        DO NOTHING
+                        """)
+                .param("idConciliacao", idConciliacao)
+                .param("idEmpresa", idEmpresa)
+                .param("provedor", provedor)
+                .param("identificadorExtrato", identificadorExtrato)
+                .param("hashExtrato", hashExtrato)
+                .param("moeda", moeda)
+                .param("periodoInicio", DatasSql.gravar(periodoInicio))
+                .param("periodoFim", DatasSql.gravar(periodoFim))
+                .param("registrosProvedor", registrosProvedor)
+                .param("iniciadaEm", DatasSql.gravar(iniciadaEm))
+                .update();
+
+        ConciliacaoPersistida conciliacao = buscarConciliacaoPorExtrato(
+                idEmpresa, provedor, identificadorExtrato).orElseThrow();
+        return new InicioConciliacao(conciliacao, inseridos == 1);
+    }
+
+    public Optional<ConciliacaoPersistida> buscarConciliacaoPorExtrato(
+            UUID idEmpresa,
+            String provedor,
+            String identificadorExtrato) {
+        return banco.sql("""
+                        SELECT id_conciliacao, provedor, identificador_extrato,
+                               hash_extrato, moeda, periodo_inicio, periodo_fim,
+                               registros_provedor, registros_locais,
+                               registros_duplicados, registros_analisados,
+                               divergencias_encontradas, status, iniciada_em,
+                               concluida_em
+                          FROM conciliacao
+                         WHERE id_empresa = :idEmpresa
+                           AND provedor = :provedor
+                           AND identificador_extrato = :identificadorExtrato
+                        """)
+                .param("idEmpresa", idEmpresa)
+                .param("provedor", provedor)
+                .param("identificadorExtrato", identificadorExtrato)
+                .query(this::mapearConciliacaoPersistida)
+                .optional();
+    }
+
+    public void registrarOcorrenciaConciliacao(
+            UUID idConciliacao,
+            UUID idPagamento,
+            String tipo,
+            String detalhes,
+            Instant agora) {
+        banco.sql("""
+                        INSERT INTO ocorrencia_conciliacao (
+                            id_ocorrencia, id_conciliacao, id_pagamento,
+                            tipo, detalhes, identificada_em
+                        ) VALUES (
+                            :idOcorrencia, :idConciliacao, :idPagamento,
+                            :tipo, :detalhes, :agora
+                        )
+                        """)
+                .param("idOcorrencia", UUID.randomUUID())
+                .param("idConciliacao", idConciliacao)
+                .param("idPagamento", idPagamento)
+                .param("tipo", tipo)
+                .param("detalhes", limitar(detalhes, 2_000))
+                .param("agora", DatasSql.gravar(agora))
+                .update();
+    }
+
+    public List<OcorrenciaConciliacao> listarOcorrenciasConciliacao(UUID idConciliacao) {
+        return banco.sql("""
+                        SELECT id_pagamento, tipo, detalhes, identificada_em
+                          FROM ocorrencia_conciliacao
+                         WHERE id_conciliacao = :idConciliacao
+                         ORDER BY identificada_em, id_ocorrencia
+                        """)
+                .param("idConciliacao", idConciliacao)
+                .query((resultado, linha) -> new OcorrenciaConciliacao(
+                        resultado.getObject("id_pagamento", UUID.class),
+                        resultado.getString("tipo"),
+                        resultado.getString("detalhes"),
+                        DatasSql.ler(resultado, "identificada_em")))
+                .list();
+    }
+
+    public void concluirConciliacao(
+            UUID idConciliacao,
+            int registrosLocais,
+            int registrosDuplicados,
+            int registrosAnalisados,
+            int divergenciasEncontradas,
+            Instant concluidaEm) {
+        int atualizados = banco.sql("""
+                        UPDATE conciliacao
+                           SET registros_locais = :registrosLocais,
+                               registros_duplicados = :registrosDuplicados,
+                               registros_analisados = :registrosAnalisados,
+                               divergencias_encontradas = :divergencias,
+                               status = :status,
+                               concluida_em = :concluidaEm
+                         WHERE id_conciliacao = :idConciliacao
+                           AND status = 'PROCESSANDO'
+                        """)
+                .param("registrosLocais", registrosLocais)
+                .param("registrosDuplicados", registrosDuplicados)
+                .param("registrosAnalisados", registrosAnalisados)
+                .param("divergencias", divergenciasEncontradas)
+                .param("status", divergenciasEncontradas == 0
+                        ? "CONCLUIDA"
+                        : "CONCLUIDA_COM_DIVERGENCIAS")
+                .param("concluidaEm", DatasSql.gravar(concluidaEm))
+                .param("idConciliacao", idConciliacao)
+                .update();
+        if (atualizados != 1) {
+            throw new IllegalStateException("A conciliacao nao estava disponivel para conclusao");
+        }
+    }
+
     public List<RespostaConciliacaoResumo> listarConciliacoes(
             UUID idEmpresa,
             int limite) {
         return banco.sql("""
-                        SELECT id_conciliacao, registros_analisados,
-                               divergencias_encontradas, status, concluida_em
+                        SELECT id_conciliacao, provedor, identificador_extrato,
+                               periodo_inicio, periodo_fim, registros_provedor,
+                               registros_locais, registros_duplicados,
+                               registros_analisados, divergencias_encontradas,
+                               status, concluida_em
                           FROM conciliacao
                          WHERE id_empresa = :idEmpresa
-                         ORDER BY concluida_em DESC, id_conciliacao
+                         ORDER BY iniciada_em DESC, id_conciliacao
                          LIMIT :limite
                         """)
                 .param("idEmpresa", idEmpresa)
                 .param("limite", limite)
                 .query((resultado, linha) -> new RespostaConciliacaoResumo(
                         resultado.getObject("id_conciliacao", UUID.class),
+                        resultado.getString("provedor"),
+                        resultado.getString("identificador_extrato"),
+                        DatasSql.ler(resultado, "periodo_inicio"),
+                        DatasSql.ler(resultado, "periodo_fim"),
+                        resultado.getInt("registros_provedor"),
+                        resultado.getInt("registros_locais"),
+                        resultado.getInt("registros_duplicados"),
                         resultado.getInt("registros_analisados"),
                         resultado.getInt("divergencias_encontradas"),
                         resultado.getString("status"),
@@ -501,7 +771,7 @@ public class RepositorioPagamentos {
                 .param("idEmpresa", idEmpresa)
                 .param("status", status, java.sql.Types.VARCHAR)
                 .param("limite", tamanho)
-                .param("deslocamento", pagina * tamanho)
+                .param("deslocamento", (long) pagina * tamanho)
                 .query(this::mapearDivergencia)
                 .list();
         return new PaginaDivergencias(itens, pagina, tamanho, total);
@@ -605,6 +875,38 @@ public class RepositorioPagamentos {
                 DatasSql.ler(resultado, "resolvido_em"));
     }
 
+    private PagamentoConciliavel mapearPagamentoConciliavel(ResultSet resultado, int linha)
+            throws SQLException {
+        return new PagamentoConciliavel(
+                resultado.getObject("id_pagamento", UUID.class),
+                resultado.getBigDecimal("valor"),
+                resultado.getString("moeda"),
+                resultado.getString("status"),
+                resultado.getString("id_autorizacao"),
+                resultado.getString("provedor"),
+                DatasSql.ler(resultado, "criado_em"));
+    }
+
+    private ConciliacaoPersistida mapearConciliacaoPersistida(ResultSet resultado, int linha)
+            throws SQLException {
+        return new ConciliacaoPersistida(
+                resultado.getObject("id_conciliacao", UUID.class),
+                resultado.getString("provedor"),
+                resultado.getString("identificador_extrato"),
+                resultado.getString("hash_extrato"),
+                resultado.getString("moeda"),
+                DatasSql.ler(resultado, "periodo_inicio"),
+                DatasSql.ler(resultado, "periodo_fim"),
+                resultado.getInt("registros_provedor"),
+                resultado.getInt("registros_locais"),
+                resultado.getInt("registros_duplicados"),
+                resultado.getInt("registros_analisados"),
+                resultado.getInt("divergencias_encontradas"),
+                resultado.getString("status"),
+                DatasSql.ler(resultado, "iniciada_em"),
+                DatasSql.ler(resultado, "concluida_em"));
+    }
+
     private Pagamento mapearPagamento(ResultSet resultado, int linha) throws SQLException {
         return new Pagamento(
                 resultado.getObject("id_pagamento", UUID.class),
@@ -639,5 +941,43 @@ public class RepositorioPagamentos {
                 StatusPagamento status) {
             this(idPagamento, idEmpresa, idCompra, status, MetodoPagamento.CARTAO, null, null);
         }
+    }
+
+    public record PagamentoConciliavel(
+            UUID idPagamento,
+            BigDecimal valor,
+            String moeda,
+            String status,
+            String idAutorizacao,
+            String provedor,
+            Instant criadoEm) {
+    }
+
+    public record ConciliacaoPersistida(
+            UUID idConciliacao,
+            String provedor,
+            String identificadorExtrato,
+            String hashExtrato,
+            String moeda,
+            Instant periodoInicio,
+            Instant periodoFim,
+            int registrosProvedor,
+            int registrosLocais,
+            int registrosDuplicados,
+            int registrosAnalisados,
+            int divergenciasEncontradas,
+            String status,
+            Instant iniciadaEm,
+            Instant concluidaEm) {
+    }
+
+    public record InicioConciliacao(ConciliacaoPersistida conciliacao, boolean nova) {
+    }
+
+    public record OcorrenciaConciliacao(
+            UUID idPagamento,
+            String tipo,
+            String detalhes,
+            Instant identificadaEm) {
     }
 }

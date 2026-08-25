@@ -11,9 +11,7 @@ import br.com.orquestrapay.provider.api.PedidoAutorizacao;
 import br.com.orquestrapay.provider.config.PropriedadesSimulador;
 import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.client.RestClient;
-import org.springframework.web.server.ResponseStatusException;
 
 class TesteServicoSimulador {
 
@@ -23,7 +21,8 @@ class TesteServicoSimulador {
                     "segredo-webhook-com-mais-de-vinte-quatro-caracteres",
                     Set.of("localhost")),
             RestClient.create(),
-            new ObjectMapper());
+            new ObjectMapper(),
+            new GeradorBrCodePix());
 
     @Test
     void deveAutorizarPagamentoERepetirAMesmaResposta() {
@@ -51,11 +50,10 @@ class TesteServicoSimulador {
         var pedido = pedido("tok_instavel");
 
         assertThatThrownBy(() -> servico.autorizar(pedido))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(excecao -> assertThat(((ResponseStatusException) excecao).getStatusCode())
-                        .isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
+                .isInstanceOf(ExcecaoIndisponibilidadeConfirmada.class)
+                .hasMessage("Indisponibilidade temporaria simulada");
         assertThatThrownBy(() -> servico.autorizar(pedido))
-                .isInstanceOf(ResponseStatusException.class);
+                .isInstanceOf(ExcecaoIndisponibilidadeConfirmada.class);
 
         assertThat(servico.autorizar(pedido).aprovada()).isTrue();
     }
@@ -70,6 +68,19 @@ class TesteServicoSimulador {
         assertThat(primeiroEstorno.estornado()).isTrue();
         assertThat(primeiroEstorno.protocolo()).startsWith("est_");
         assertThat(segundoEstorno).isEqualTo(primeiroEstorno);
+    }
+
+    @Test
+    void deveSimularRespostaPerdidaSemDuplicarAAutorizacao() {
+        var pedido = pedido("tok_resposta_perdida");
+        var resposta = servico.autorizar(pedido);
+
+        assertThat(servico.deveOcultarResposta(pedido)).isTrue();
+        assertThat(servico.deveOcultarResposta(pedido)).isTrue();
+        assertThat(servico.deveOcultarResposta(pedido)).isTrue();
+        assertThat(servico.deveOcultarResposta(pedido)).isFalse();
+        assertThat(servico.autorizar(pedido)).isEqualTo(resposta);
+        assertThat(servico.consultarAutorizacao(pedido.idCompra())).contains(resposta);
     }
 
     private PedidoAutorizacao pedido(String token) {

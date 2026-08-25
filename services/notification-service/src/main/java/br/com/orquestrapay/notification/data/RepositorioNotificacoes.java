@@ -53,8 +53,8 @@ public class RepositorioNotificacoes {
             int maximoTentativas,
             Instant agora,
             Instant bloqueadoAte) {
-        List<NotificacaoPendente> notificacoes = banco.sql("""
-                        SELECT id_notificacao, destinatario, assunto, mensagem, tentativas
+        List<UUID> ids = banco.sql("""
+                        SELECT id_notificacao
                           FROM notificacao
                          WHERE tentativas < :maximoTentativas
                            AND (
@@ -68,60 +68,90 @@ public class RepositorioNotificacoes {
                 .param("limite", limite)
                 .param("maximoTentativas", maximoTentativas)
                 .param("agora", DatasSql.gravar(agora))
+                .query(UUID.class)
+                .list();
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+
+        UUID tokenBloqueio = UUID.randomUUID();
+        banco.sql("""
+                        UPDATE notificacao
+                           SET status = 'PROCESSANDO',
+                               tentativas = tentativas + 1,
+                               bloqueado_ate = :bloqueadoAte,
+                               token_bloqueio = :tokenBloqueio
+                         WHERE id_notificacao IN (:ids)
+                        """)
+                .param("ids", ids)
+                .param("bloqueadoAte", DatasSql.gravar(bloqueadoAte))
+                .param("tokenBloqueio", tokenBloqueio)
+                .update();
+
+        return banco.sql("""
+                        SELECT id_notificacao, id_empresa, id_compra,
+                               destinatario, assunto, mensagem, tentativas,
+                               token_bloqueio
+                          FROM notificacao
+                         WHERE id_notificacao IN (:ids)
+                           AND status = 'PROCESSANDO'
+                           AND token_bloqueio = :tokenBloqueio
+                         ORDER BY criada_em
+                        """)
+                .param("ids", ids)
+                .param("tokenBloqueio", tokenBloqueio)
                 .query((resultado, linha) -> new NotificacaoPendente(
                         resultado.getObject("id_notificacao", UUID.class),
+                        resultado.getObject("id_empresa", UUID.class),
+                        resultado.getObject("id_compra", UUID.class),
                         resultado.getString("destinatario"),
                         resultado.getString("assunto"),
                         resultado.getString("mensagem"),
-                        resultado.getInt("tentativas")))
+                        resultado.getInt("tentativas"),
+                        resultado.getObject("token_bloqueio", UUID.class)))
                 .list();
-        for (NotificacaoPendente notificacao : notificacoes) {
-            banco.sql("""
-                            UPDATE notificacao
-                               SET status = 'PROCESSANDO',
-                                   tentativas = tentativas + 1,
-                                   bloqueado_ate = :bloqueadoAte
-                             WHERE id_notificacao = :id
-                            """)
-                    .param("id", notificacao.idNotificacao())
-                    .param("bloqueadoAte", DatasSql.gravar(bloqueadoAte))
-                    .update();
-        }
-        return notificacoes;
     }
 
-    public void marcarEnviada(UUID idNotificacao, Instant agora) {
-        banco.sql("""
+    public boolean marcarEnviada(NotificacaoPendente notificacao, Instant agora) {
+        return banco.sql("""
                         UPDATE notificacao
                            SET status = 'ENVIADA', enviada_em = :agora,
-                               ultimo_erro = NULL, bloqueado_ate = NULL
-                         WHERE id_notificacao = :id AND status = 'PROCESSANDO'
+                               ultimo_erro = NULL, bloqueado_ate = NULL,
+                               token_bloqueio = NULL
+                         WHERE id_notificacao = :id
+                           AND status = 'PROCESSANDO'
+                           AND token_bloqueio = :tokenBloqueio
                         """)
-                .param("id", idNotificacao)
+                .param("id", notificacao.idNotificacao())
+                .param("tokenBloqueio", notificacao.tokenBloqueio())
                 .param("agora", DatasSql.gravar(agora))
-                .update();
+                .update() == 1;
     }
 
-    public void registrarFalha(
-            UUID idNotificacao,
+    public boolean registrarFalha(
+            NotificacaoPendente notificacao,
             String erro,
             Instant proximaTentativaEm,
             Instant falhaDefinitivaEm) {
-        banco.sql("""
+        return banco.sql("""
                         UPDATE notificacao
                            SET status = :status,
                                ultimo_erro = :erro,
                                proxima_tentativa_em = :proximaTentativaEm,
                                falha_definitiva_em = :falhaDefinitivaEm,
-                               bloqueado_ate = NULL
-                         WHERE id_notificacao = :id AND status = 'PROCESSANDO'
+                               bloqueado_ate = NULL,
+                               token_bloqueio = NULL
+                         WHERE id_notificacao = :id
+                           AND status = 'PROCESSANDO'
+                           AND token_bloqueio = :tokenBloqueio
                         """)
-                .param("id", idNotificacao)
+                .param("id", notificacao.idNotificacao())
+                .param("tokenBloqueio", notificacao.tokenBloqueio())
                 .param("status", falhaDefinitivaEm == null ? "PENDENTE" : "FALHA_DEFINITIVA")
                 .param("erro", abreviar(erro))
                 .param("proximaTentativaEm", DatasSql.gravar(proximaTentativaEm))
                 .param("falhaDefinitivaEm", DatasSql.gravar(falhaDefinitivaEm), java.sql.Types.TIMESTAMP_WITH_TIMEZONE)
-                .update();
+                .update() == 1;
     }
 
     public List<RespostaNotificacao> buscar(UUID idEmpresa, UUID idCompra) {
@@ -149,10 +179,13 @@ public class RepositorioNotificacoes {
 
     public record NotificacaoPendente(
             UUID idNotificacao,
+            UUID idEmpresa,
+            UUID idCompra,
             String destinatario,
             String assunto,
             String mensagem,
-            int tentativas) {
+            int tentativas,
+            UUID tokenBloqueio) {
     }
 
     private String abreviar(String erro) {

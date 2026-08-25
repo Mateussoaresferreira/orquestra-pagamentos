@@ -1,0 +1,10 @@
+ALTER TABLE pagamento
+    DROP CONSTRAINT ck_pagamento_status;
+
+ALTER TABLE pagamento
+    ADD CONSTRAINT ck_pagamento_status CHECK (status IN (
+        'PENDENTE', 'PROCESSANDO', 'CONFIRMACAO_PENDENTE',
+        'AGUARDANDO_CONFIRMACAO', 'AUTORIZADO', 'RECUSADO',
+        'ESTORNO_PENDENTE', 'ESTORNANDO', 'FALHA_TECNICA',
+        'EXPIRADO', 'ESTORNADO'
+    ));

@@ -1,6 +1,8 @@
 package br.com.orquestrapay.risk.messaging;
 
 import static br.com.orquestrapay.contracts.TiposEventos.ANALISAR_RISCO;
+import static br.com.orquestrapay.contracts.VersoesEventos.VERSAO_INICIAL;
+import static br.com.orquestrapay.contracts.VersoesEventos.exigirSuportada;
 
 import br.com.orquestrapay.contracts.EventoSaga;
 import br.com.orquestrapay.risk.service.ServicoRisco;
@@ -19,6 +21,7 @@ public class ConsumidorAnaliseRisco {
     @KafkaListener(topics = "${orquestrapay.eventos.topicos.risco}")
     public void receber(EventoSaga evento) {
         if (ANALISAR_RISCO.equals(evento.getTipo())) {
+            exigirSuportada(evento, VERSAO_INICIAL);
             risco.analisar(evento);
         }
     }

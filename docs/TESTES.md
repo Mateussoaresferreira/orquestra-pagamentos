@@ -25,9 +25,26 @@ conciliação, leases, quarentena, tentativas de envio, parcelas imutáveis e
 partidas dobradas.
 
 O JaCoCo falha o `verify` quando um módulo cai abaixo do seu piso atual. Os
-limites são individuais e baseados na cobertura realmente medida, entre 20% e
+limites são individuais e baseados na cobertura realmente medida, entre 30% e
 75%, para impedir regressões sem apresentar um número artificial de 80%. Cada
 nova versão deve elevar o piso depois de ampliar testes relevantes.
+
+| Modulo | Cobertura de linhas medida | Piso do CI |
+|---|---:|---:|
+| Contratos de eventos | 32,1% | 30% |
+| Nucleo da plataforma | 72,6% | 65% |
+| Starter Spring Boot | 72,1% | 65% |
+| Checkout | 38,5% | 35% |
+| Estoque | 56,7% | 50% |
+| Risco | 83,2% | 75% |
+| Pagamento | 62,3% | 60% |
+| Razao contabil | 73,3% | 65% |
+| Notificacao | 42,7% | 40% |
+| Simulador de provedor | 56,0% | 50% |
+
+A execucao integral atual possui 202 testes automatizados, sem falhas, erros ou
+testes ignorados. Os percentuais acima sao evidencias do `clean verify` completo,
+nao uma estimativa.
 
 ## Fluxo ponta a ponta
 
@@ -75,6 +92,14 @@ nova para cada sondagem ativa. Sem isso, o ZAP altera o corpo e reutiliza a
 mesma chave, interpreta o conflito `409` esperado como diferença booleana e
 produz falso positivo de SQL injection. O script não mantém lista de alertas
 ignorados: qualquer ocorrência de risco ainda encerra a auditoria.
+
+A execução final aplicou 119 regras em cada um dos seis contratos e terminou
+sem alertas. Durante a evolução do teste, uma sonda com byte NUL revelou que um
+caractere de controle podia alcançar o PostgreSQL e produzir `500`; outra sonda
+mostrou que a validação permissiva de email aceitava um sufixo inválido e levava
+a entrega SMTP à falha definitiva. O checkout agora rejeita ambos os casos com
+`400` antes de persistir qualquer compra, e os cenários possuem testes de
+regressão próprios.
 
 O segundo script comprova:
 
@@ -137,6 +162,12 @@ a queda abrupta de um consumidor:
 Os dois scripts aguardam a drenagem das filas e executam a auditoria cruzada dos
 seis bancos. O segundo também rejeita qualquer pagamento duplicado depois da
 reinicialização.
+
+Na execução final de interrupção, o processo de pagamento foi encerrado
+abruptamente durante a carga. Foram aceitas 319 compras, sem falha HTTP ou
+resposta inesperada, com p95 de 315,68 ms. Depois da reinicialização, o backlog
+convergiu em 87 segundos, sem efeito financeiro duplicado, e a auditoria dos seis
+bancos foi aprovada.
 
 `testar-volume.ps1` usa outro cenário k6, com quantidade exata e ritmo
 controlado. Ele prepara um produto exclusivo, grava checkpoint por lote e pode

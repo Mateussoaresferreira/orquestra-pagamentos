@@ -3,6 +3,8 @@ package br.com.orquestrapay.notification.messaging;
 import static br.com.orquestrapay.contracts.TiposEventos.COMPRA_COMPENSADA;
 import static br.com.orquestrapay.contracts.TiposEventos.COMPRA_CONCLUIDA;
 import static br.com.orquestrapay.contracts.TiposEventos.COMPRA_RECUSADA;
+import static br.com.orquestrapay.contracts.VersoesEventos.VERSAO_INICIAL;
+import static br.com.orquestrapay.contracts.VersoesEventos.exigirSuportada;
 
 import java.util.Set;
 
@@ -28,6 +30,7 @@ public class ConsumidorComprasFinalizadas {
     @KafkaListener(topics = "${orquestrapay.eventos.topicos.notificacao}")
     public void receber(EventoSaga evento) {
         if (EVENTOS.contains(evento.getTipo())) {
+            exigirSuportada(evento, VERSAO_INICIAL);
             notificacoes.agendar(evento);
         }
     }

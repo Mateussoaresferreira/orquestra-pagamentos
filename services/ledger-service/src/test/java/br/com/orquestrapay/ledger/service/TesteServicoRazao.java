@@ -62,6 +62,7 @@ class TesteServicoRazao {
                 Clock.fixed(agora, ZoneOffset.UTC));
         servico.registrar(evento);
 
+        verify(repositorio).bloquearCompra(idEmpresa, idCompra);
         verify(repositorio).abrir(
                 any(UUID.class),
                 eq(idEmpresa),

@@ -67,6 +67,7 @@ public class RoteadorProvedores {
         }
 
         var tentados = new ArrayList<String>();
+        boolean provedorFixado = provedorPreferido != null && !provedorPreferido.isBlank();
         RuntimeException ultimaFalha = null;
         for (ClienteProvedor provedor : candidatos) {
             tentados.add(provedor.nome());
@@ -80,6 +81,14 @@ public class RoteadorProvedores {
                 return new ResultadoRoteamento<>(provedor.nome(), resposta, tentados);
             } catch (ExcecaoComunicacaoProvedor excecao) {
                 ultimaFalha = excecao;
+                if (provedorFixado || !excecao.permiteFallback()) {
+                    metricas.counter(
+                            "orquestrapay.roteamento.resultados",
+                            "metodo", metodo.name(),
+                            "provedor", provedor.nome(),
+                            "resultado", "confirmacao-pendente").increment();
+                    throw excecao;
+                }
                 metricas.counter(
                         "orquestrapay.roteamento.resultados",
                         "metodo", metodo.name(),

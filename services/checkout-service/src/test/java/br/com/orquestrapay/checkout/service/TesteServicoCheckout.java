@@ -67,4 +67,15 @@ class TesteServicoCheckout {
 
         verifyNoInteractions(repositorio, eventos, mensagens, json, relogio, metricas);
     }
+
+    @Test
+    void deveRejeitarCaractereDeControleNaChaveDeIdempotencia() {
+        var servico = new ServicoCheckout(
+                repositorio, eventos, mensagens, json, relogio, metricas, protecaoToken);
+
+        assertThatThrownBy(() -> servico.iniciar(UUID.randomUUID(), "chave\u0000invalida", null))
+                .isInstanceOf(br.com.orquestrapay.platform.web.ExcecaoNegocio.class)
+                .hasMessageContaining("caracteres imprimiveis");
+        verifyNoInteractions(repositorio, eventos, mensagens, json, relogio, metricas);
+    }
 }

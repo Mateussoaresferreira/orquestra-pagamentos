@@ -92,9 +92,12 @@ de tentativas e histórico auditável:
 
 ## Conciliação e divergências
 
-`POST /api/v1/conciliacoes` compara um lote de até 500 registros do provedor
-com pagamentos locais. Diferença de valor, status ou ausência local cria uma
-divergência operacional. O histórico pode ser consultado e cada ocorrência
+`POST /api/v1/conciliacoes` compara um extrato identificado de até 500 registros
+com os pagamentos locais da mesma empresa, provedor, moeda e período. A análise
+é bidirecional: encontra registros ausentes em qualquer lado, duplicidades e
+diferenças de valor, moeda, status, provedor ou identificador externo. Repetir o
+mesmo extrato reaproveita o resultado; reutilizar seu identificador com outro
+conteúdo retorna conflito. O histórico pode ser consultado e cada ocorrência
 passa de `ABERTA` para `INVESTIGANDO` e `RESOLVIDA`, mantendo observação e
 auditoria. Enquanto uma ocorrência equivalente estiver ativa, novas
 conciliações apenas atualizam seus detalhes; depois da resolução, uma nova
@@ -104,11 +107,16 @@ divergência legítima pode ser aberta sem apagar o histórico anterior.
 
 Todo serviço com outbox expõe, sob permissão administrativa:
 
-- `GET /api/v1/admin/quarentena`;
-- `POST /api/v1/admin/quarentena/{idEvento}/reprocessar`.
+- `GET /api/v1/admin/quarentena?status=ATIVA|RESOLVIDA|TODAS`;
+- `GET /api/v1/admin/quarentena/{idEvento}/auditoria`;
+- `POST /api/v1/admin/quarentena/{idEvento}/reprocessar`;
+- `POST /api/v1/admin/quarentena/{idEvento}/descartar`.
 
-O reprocessamento não apaga o incidente: ele cria uma nova tentativa e registra
-responsável, data e resultado.
+As decisões exigem um motivo. O reprocessamento não apaga o incidente: registra
+responsável, erro e tentativas anteriores antes de devolver o evento à fila. O
+descarte definitivo também fica auditado e libera, de forma explícita, os eventos
+posteriores da mesma compra que estavam protegidos pela garantia de ordem. O
+payload do evento não é devolvido pela API administrativa.
 
 ## Spring Boot Starter
 

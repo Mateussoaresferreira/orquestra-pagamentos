@@ -28,7 +28,7 @@ public class RepositorioCompras {
     }
 
     public void bloquearIdempotencia(UUID idEmpresa, String chave) {
-        banco.sql("SELECT pg_advisory_xact_lock(hashtext(:valor))")
+        banco.sql("SELECT pg_advisory_xact_lock(hashtextextended(:valor, 0))")
                 .param("valor", idEmpresa + ":" + chave)
                 .query((resultado, linha) -> Boolean.TRUE)
                 .single();

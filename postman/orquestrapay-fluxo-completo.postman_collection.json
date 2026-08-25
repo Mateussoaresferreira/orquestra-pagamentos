@@ -16,6 +16,12 @@
     { "key": "chaveIdempotencia", "value": "" },
     { "key": "idCompra", "value": "" },
     { "key": "idPagamento", "value": "" },
+    { "key": "idAutorizacao", "value": "" },
+    { "key": "provedorPagamento", "value": "" },
+    { "key": "identificadorExtratoConciliacao", "value": "" },
+    { "key": "periodoInicioConciliacao", "value": "" },
+    { "key": "periodoFimConciliacao", "value": "" },
+    { "key": "ocorridoEmConciliacao", "value": "" },
     { "key": "idDivergencia", "value": "" },
     { "key": "idCompraRecusada", "value": "" },
     { "key": "idCompraCompensada", "value": "" },
@@ -179,8 +185,11 @@
         {
           "name": "Consultar pagamento",
           "event": [{ "listen": "test", "script": { "exec": [
-            "pm.test('Pagamento autorizado', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('AUTORIZADO'); });",
-            "pm.collectionVariables.set('idPagamento', pm.response.json().idPagamento);"
+            "const pagamento = pm.response.json();",
+            "pm.test('Pagamento autorizado', () => { pm.response.to.have.status(200); pm.expect(pagamento.status).to.eql('AUTORIZADO'); });",
+            "pm.collectionVariables.set('idPagamento', pagamento.idPagamento);",
+            "pm.collectionVariables.set('idAutorizacao', pagamento.idAutorizacao);",
+            "pm.collectionVariables.set('provedorPagamento', pagamento.provedor);"
           ], "type": "text/javascript" } }],
           "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlPagamento}}/api/v1/pagamentos/compras/{{idCompra}}", "host": ["{{urlPagamento}}"], "path": ["api", "v1", "pagamentos", "compras", "{{idCompra}}"] } }
         },
@@ -227,21 +236,63 @@
         },
         {
           "name": "Conciliar pagamento",
-          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Conciliacao sem divergencias', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().divergencias).to.be.empty; });"], "type": "text/javascript" } }],
+          "event": [
+            { "listen": "prerequest", "script": { "exec": [
+              "const agora = Date.now();",
+              "pm.collectionVariables.set('identificadorExtratoConciliacao', 'extrato-' + pm.variables.replaceIn('{{$guid}}'));",
+              "pm.collectionVariables.set('periodoInicioConciliacao', new Date(agora - 3600000).toISOString());",
+              "pm.collectionVariables.set('periodoFimConciliacao', new Date(agora + 3600000).toISOString());",
+              "pm.collectionVariables.set('ocorridoEmConciliacao', new Date(agora).toISOString());"
+            ], "type": "text/javascript" } },
+            { "listen": "test", "script": { "exec": [
+              "const conciliacao = pm.response.json();",
+              "pm.test('Conciliacao sem divergencias', () => { pm.response.to.have.status(200); pm.expect(conciliacao.divergencias).to.be.empty; pm.expect(conciliacao.reaproveitada).to.eql(false); });",
+              "pm.collectionVariables.set('idConciliacao', conciliacao.idConciliacao);"
+            ], "type": "text/javascript" } }
+          ],
           "request": {
             "method": "POST",
             "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }, { "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"registros\": [\n    { \"idPagamento\": \"{{idPagamento}}\", \"valor\": 199.70, \"status\": \"AUTORIZADO\" }\n  ]\n}" },
+            "body": { "mode": "raw", "raw": "{\n  \"provedor\": \"{{provedorPagamento}}\",\n  \"identificadorExtrato\": \"{{identificadorExtratoConciliacao}}\",\n  \"periodoInicio\": \"{{periodoInicioConciliacao}}\",\n  \"periodoFim\": \"{{periodoFimConciliacao}}\",\n  \"moeda\": \"BRL\",\n  \"registros\": [\n    {\n      \"idPagamento\": \"{{idPagamento}}\",\n      \"valor\": 199.70,\n      \"moeda\": \"BRL\",\n      \"status\": \"AUTORIZADO\",\n      \"idTransacaoProvedor\": \"{{idAutorizacao}}\",\n      \"ocorridoEm\": \"{{ocorridoEmConciliacao}}\"\n    }\n  ]\n}" },
+            "url": { "raw": "{{urlPagamento}}/api/v1/conciliacoes", "host": ["{{urlPagamento}}"], "path": ["api", "v1", "conciliacoes"] }
+          }
+        },
+        {
+          "name": "Repetir o mesmo extrato",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Resultado idempotente foi reaproveitado', () => { const c = pm.response.json(); pm.response.to.have.status(200); pm.expect(c.reaproveitada).to.eql(true); pm.expect(c.idConciliacao).to.eql(pm.collectionVariables.get('idConciliacao')); });"
+          ], "type": "text/javascript" } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"provedor\": \"{{provedorPagamento}}\",\n  \"identificadorExtrato\": \"{{identificadorExtratoConciliacao}}\",\n  \"periodoInicio\": \"{{periodoInicioConciliacao}}\",\n  \"periodoFim\": \"{{periodoFimConciliacao}}\",\n  \"moeda\": \"BRL\",\n  \"registros\": [\n    {\n      \"idPagamento\": \"{{idPagamento}}\",\n      \"valor\": 199.70,\n      \"moeda\": \"BRL\",\n      \"status\": \"AUTORIZADO\",\n      \"idTransacaoProvedor\": \"{{idAutorizacao}}\",\n      \"ocorridoEm\": \"{{ocorridoEmConciliacao}}\"\n    }\n  ]\n}" },
+            "url": { "raw": "{{urlPagamento}}/api/v1/conciliacoes", "host": ["{{urlPagamento}}"], "path": ["api", "v1", "conciliacoes"] }
+          }
+        },
+        {
+          "name": "Rejeitar extrato alterado",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Mesmo identificador com outro conteudo foi rejeitado', () => { pm.response.to.have.status(409); pm.expect(pm.response.json().codigo).to.eql('extrato-conciliacao-alterado'); });"
+          ], "type": "text/javascript" } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"provedor\": \"{{provedorPagamento}}\",\n  \"identificadorExtrato\": \"{{identificadorExtratoConciliacao}}\",\n  \"periodoInicio\": \"{{periodoInicioConciliacao}}\",\n  \"periodoFim\": \"{{periodoFimConciliacao}}\",\n  \"moeda\": \"BRL\",\n  \"registros\": [\n    {\n      \"idPagamento\": \"{{idPagamento}}\",\n      \"valor\": 199.71,\n      \"moeda\": \"BRL\",\n      \"status\": \"AUTORIZADO\",\n      \"idTransacaoProvedor\": \"{{idAutorizacao}}\",\n      \"ocorridoEm\": \"{{ocorridoEmConciliacao}}\"\n    }\n  ]\n}" },
             "url": { "raw": "{{urlPagamento}}/api/v1/conciliacoes", "host": ["{{urlPagamento}}"], "path": ["api", "v1", "conciliacoes"] }
           }
         },
         {
           "name": "Gerar divergencia controlada",
-          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Divergencia de valor foi identificada', () => { pm.response.to.have.status(200); const c = pm.response.json(); pm.expect(c.divergenciasEncontradas).to.eql(1); pm.expect(c.divergencias[0]).to.include('provedor 199.71'); });"], "type": "text/javascript" } }],
+          "event": [
+            { "listen": "prerequest", "script": { "exec": [
+              "pm.collectionVariables.set('identificadorExtratoConciliacao', 'extrato-divergente-' + pm.variables.replaceIn('{{$guid}}'));"
+            ], "type": "text/javascript" } },
+            { "listen": "test", "script": { "exec": ["pm.test('Divergencia de valor foi identificada', () => { pm.response.to.have.status(200); const c = pm.response.json(); pm.expect(c.divergenciasEncontradas).to.eql(1); pm.expect(c.divergencias[0]).to.include('valor no provedor 199.71'); });"], "type": "text/javascript" } }
+          ],
           "request": {
             "method": "POST",
             "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }, { "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"registros\": [\n    { \"idPagamento\": \"{{idPagamento}}\", \"valor\": 199.71, \"status\": \"AUTORIZADO\" }\n  ]\n}" },
+            "body": { "mode": "raw", "raw": "{\n  \"provedor\": \"{{provedorPagamento}}\",\n  \"identificadorExtrato\": \"{{identificadorExtratoConciliacao}}\",\n  \"periodoInicio\": \"{{periodoInicioConciliacao}}\",\n  \"periodoFim\": \"{{periodoFimConciliacao}}\",\n  \"moeda\": \"BRL\",\n  \"registros\": [\n    {\n      \"idPagamento\": \"{{idPagamento}}\",\n      \"valor\": 199.71,\n      \"moeda\": \"BRL\",\n      \"status\": \"AUTORIZADO\",\n      \"idTransacaoProvedor\": \"{{idAutorizacao}}\",\n      \"ocorridoEm\": \"{{ocorridoEmConciliacao}}\"\n    }\n  ]\n}" },
             "url": { "raw": "{{urlPagamento}}/api/v1/conciliacoes", "host": ["{{urlPagamento}}"], "path": ["api", "v1", "conciliacoes"] }
           }
         },
@@ -410,7 +461,7 @@
             { "listen": "test", "script": { "exec": [
               "const tentativa = Number(pm.collectionVariables.get('tentativasPix') || 0) + 1;",
               "if (pm.response.code === 404 && tentativa < 30) { pm.collectionVariables.set('tentativasPix', String(tentativa)); pm.execution.setNextRequest(pm.info.requestName); }",
-              "else { const corpo = pm.response.json(); if (corpo.status !== 'AGUARDANDO_CONFIRMACAO' && tentativa < 30) { pm.collectionVariables.set('tentativasPix', String(tentativa)); pm.execution.setNextRequest(pm.info.requestName); } else { pm.collectionVariables.unset('tentativasPix'); pm.test('Cobranca PIX possui txid e copia e cola', () => { pm.response.to.have.status(200); pm.expect(corpo.status).to.eql('AGUARDANDO_CONFIRMACAO'); pm.expect(corpo.txid).to.be.ok; pm.expect(corpo.copiaColaPix).to.be.ok; pm.expect(['principal', 'contingencia']).to.include(corpo.provedor); }); pm.collectionVariables.set('txidPix', corpo.txid); const urlProvedor = corpo.provedor === 'contingencia' ? pm.environment.get('urlProvedorContingencia') : pm.environment.get('urlProvedorPrincipal'); pm.collectionVariables.set('urlProvedorPix', urlProvedor); } }"
+              "else { const corpo = pm.response.json(); if (corpo.status !== 'AGUARDANDO_CONFIRMACAO' && tentativa < 30) { pm.collectionVariables.set('tentativasPix', String(tentativa)); pm.execution.setNextRequest(pm.info.requestName); } else { pm.collectionVariables.unset('tentativasPix'); pm.test('Cobranca PIX possui BR Code e QR Code', () => { pm.response.to.have.status(200); pm.expect(corpo.status).to.eql('AGUARDANDO_CONFIRMACAO'); pm.expect(corpo.txid).to.be.ok; pm.expect(corpo.copiaColaPix).to.match(/^000201/); pm.expect(corpo.copiaColaPix).to.match(/6304[0-9A-F]{4}$/); pm.expect(corpo.imagemQrCodeBase64).to.be.a('string').and.not.empty; pm.expect(['principal', 'contingencia']).to.include(corpo.provedor); }); pm.collectionVariables.set('txidPix', corpo.txid); const urlProvedor = corpo.provedor === 'contingencia' ? pm.environment.get('urlProvedorContingencia') : pm.environment.get('urlProvedorPrincipal'); pm.collectionVariables.set('urlProvedorPix', urlProvedor); } }"
             ], "type": "text/javascript" } }
           ],
           "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlPagamento}}/api/v1/pagamentos/compras/{{idCompraPix}}", "host": ["{{urlPagamento}}"], "path": ["api", "v1", "pagamentos", "compras", "{{idCompraPix}}"] } }
@@ -464,7 +515,7 @@
         {
           "name": "Consultar quarentena de eventos",
           "event": [{ "listen": "test", "script": { "exec": ["pm.test('Quarentena operacional acessivel', () => { pm.response.to.have.status(200); pm.expect(pm.response.json()).to.have.property('itens'); });"], "type": "text/javascript" } }],
-          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlPagamento}}/api/v1/admin/quarentena", "host": ["{{urlPagamento}}"], "path": ["api", "v1", "admin", "quarentena"] } }
+          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlPagamento}}/api/v1/admin/quarentena?status=ATIVA", "host": ["{{urlPagamento}}"], "path": ["api", "v1", "admin", "quarentena"], "query": [{ "key": "status", "value": "ATIVA" }] } }
         }
       ]
     }

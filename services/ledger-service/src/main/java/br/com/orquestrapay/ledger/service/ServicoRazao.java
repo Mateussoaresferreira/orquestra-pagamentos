@@ -57,6 +57,7 @@ public class ServicoRazao {
 
         UUID idEmpresa = UUID.fromString(evento.getIdEmpresa());
         UUID idCompra = UUID.fromString(evento.getIdCompra());
+        repositorio.bloquearCompra(idEmpresa, idCompra);
         if (repositorio.existePorCompra(idEmpresa, idCompra)) {
             return;
         }

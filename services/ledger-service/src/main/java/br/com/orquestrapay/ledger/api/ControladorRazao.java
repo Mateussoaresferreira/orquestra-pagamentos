@@ -6,6 +6,7 @@ import br.com.orquestrapay.ledger.service.ServicoRazao;
 import br.com.orquestrapay.ledger.service.ServicoParcelas;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -42,7 +43,7 @@ public class ControladorRazao {
     ParcelaRecebivel liquidar(
             @RequestHeader("X-Empresa-Id") UUID idEmpresa,
             @PathVariable UUID idCompra,
-            @PathVariable @Min(1) int numero,
+            @PathVariable @Min(1) @Max(12) int numero,
             @Valid @RequestBody LiquidacaoParcela requisicao) {
         return parcelas.liquidar(idEmpresa, idCompra, numero, requisicao);
     }

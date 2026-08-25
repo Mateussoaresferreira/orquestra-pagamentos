@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.util.Map;
@@ -41,7 +42,10 @@ class TesteRoteadorProvedores {
     void deveUsarContingenciaQuandoPrincipalFalharTecnicamente() {
         var pedido = pedido();
         when(principal.autorizar(pedido)).thenThrow(new ExcecaoComunicacaoProvedor(
-                "principal", "autorizar", new RuntimeException("indisponivel")));
+                "principal",
+                "autorizar",
+                NaturezaFalhaProvedor.SEGURA_PARA_FALLBACK,
+                new RuntimeException("indisponivel antes do envio")));
         when(contingencia.autorizar(pedido)).thenReturn(new RespostaAutorizacaoProvedor(
                 true, "aut-contingencia", "Autorizado"));
 
@@ -50,6 +54,35 @@ class TesteRoteadorProvedores {
         assertThat(resultado.provedor()).isEqualTo("contingencia");
         assertThat(resultado.provedoresTentados()).containsExactly("principal", "contingencia");
         assertThat(resultado.resposta().aprovada()).isTrue();
+    }
+
+    @Test
+    void naoDeveTentarOutroProvedorQuandoOResultadoForAmbiguo() {
+        var pedido = pedido();
+        var falha = new ExcecaoComunicacaoProvedor(
+                "principal", "autorizar", new RuntimeException("resposta perdida"));
+        when(principal.autorizar(pedido)).thenThrow(falha);
+
+        assertThatThrownBy(() -> roteador.autorizar(pedido, null))
+                .isSameAs(falha);
+
+        verify(contingencia, never()).autorizar(any());
+    }
+
+    @Test
+    void naoDeveTrocarProvedorDepoisQueUmaTentativaFoiFixada() {
+        var pedido = pedido();
+        var falha = new ExcecaoComunicacaoProvedor(
+                "principal",
+                "autorizar",
+                NaturezaFalhaProvedor.SEGURA_PARA_FALLBACK,
+                new RuntimeException("indisponivel"));
+        when(principal.autorizar(pedido)).thenThrow(falha);
+
+        assertThatThrownBy(() -> roteador.autorizar(pedido, "principal"))
+                .isSameAs(falha);
+
+        verify(contingencia, never()).autorizar(any());
     }
 
     @Test

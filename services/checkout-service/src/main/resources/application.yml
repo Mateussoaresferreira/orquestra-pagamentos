@@ -69,7 +69,7 @@ orquestrapay:
       notificacao: ${TOPICO_NOTIFICACAO:orquestrapay.notificacao.v1}
     particoes: ${TOPICOS_PARTICOES:12}
     tamanho-lote: 50
-    concorrencia-publicacao: ${EVENTOS_CONCORRENCIA_PUBLICACAO:4}
+    concorrencia-publicacao: ${EVENTOS_CONCORRENCIA_PUBLICACAO:50}
     intervalo-publicacao: 300
     tempo-limite-publicacao: 10s
     duracao-bloqueio: 30s

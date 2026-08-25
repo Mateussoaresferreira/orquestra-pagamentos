@@ -3,12 +3,13 @@
     <modelVersion>4.0.0</modelVersion>
     <parent><groupId>br.com.orquestrapay</groupId><artifactId>orquestrapay</artifactId><version>1.0.0</version><relativePath>../../pom.xml</relativePath></parent>
     <artifactId>servico-notificacao</artifactId><name>Servico de notificacao</name>
-    <properties><jacoco.minimo.linhas>0.25</jacoco.minimo.linhas></properties>
+    <properties><jacoco.minimo.linhas>0.40</jacoco.minimo.linhas></properties>
     <dependencies>
         <dependency><groupId>br.com.orquestrapay</groupId><artifactId>nucleo-plataforma</artifactId><version>${project.version}</version></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-actuator</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-flyway</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-jdbc</artifactId></dependency>
+        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-mail</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-security</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-security-oauth2-resource-server</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-webmvc</artifactId></dependency>

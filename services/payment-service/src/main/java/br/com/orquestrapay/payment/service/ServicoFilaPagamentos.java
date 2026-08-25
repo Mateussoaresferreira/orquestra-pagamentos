@@ -22,6 +22,7 @@ import br.com.orquestrapay.payment.domain.OperacaoPagamento;
 import br.com.orquestrapay.payment.domain.StatusPagamento;
 import br.com.orquestrapay.payment.domain.TipoOperacaoPagamento;
 import br.com.orquestrapay.payment.integration.ResultadoRoteamento;
+import br.com.orquestrapay.payment.integration.ExcecaoComunicacaoProvedor;
 import br.com.orquestrapay.platform.event.RegistroEventos;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Service;
@@ -126,6 +127,8 @@ public class ServicoFilaPagamentos {
         var resposta = roteamento.resposta();
         if (resposta.txid() == null || resposta.txid().isBlank()
                 || resposta.copiaCola() == null || resposta.copiaCola().isBlank()
+                || resposta.imagemQrCodeBase64() == null
+                || resposta.imagemQrCodeBase64().isBlank()
                 || resposta.expiraEm() == null) {
             throw new IllegalStateException("O provedor retornou uma cobranca PIX incompleta");
         }
@@ -170,7 +173,9 @@ public class ServicoFilaPagamentos {
         }
 
         String protocolo = roteamento.resposta().protocolo();
-        pagamentos.marcarEstornado(operacao.idPagamento(), protocolo, agora);
+        if (!pagamentos.marcarEstornado(operacao.idPagamento(), protocolo, agora)) {
+            throw new IllegalStateException("O estado atual do pagamento nao permite concluir o estorno");
+        }
         eventos.registrar(
                 PAGAMENTO_ESTORNADO,
                 operacao.idCompra(),
@@ -236,13 +241,54 @@ public class ServicoFilaPagamentos {
     }
 
     @Transactional
+    public void registrarResultadoAmbiguo(
+            OperacaoPagamento operacao,
+            ExcecaoComunicacaoProvedor falha) {
+        Instant agora = relogio.instant();
+        String descricao = "Resultado ambiguo no provedor " + falha.provedor()
+                + "; a operacao permanecera vinculada a ele ate confirmacao";
+        pagamentos.marcarConfirmacaoPendente(
+                operacao.idPagamento(), falha.provedor(), descricao, agora);
+        pagamentos.registrarTentativa(
+                operacao.idPagamento(),
+                operacao.tipo() == TipoOperacaoPagamento.CRIAR_PIX
+                        ? "CRIACAO_PIX"
+                        : "AUTORIZACAO",
+                "RESULTADO_AMBIGUO",
+                descricao,
+                agora);
+
+        if (operacao.tentativas() < propriedades.trabalhador().maximoTentativas()) {
+            Duration atraso = calcularAtraso(operacao.tentativas());
+            operacoes.reagendar(operacao, agora.plus(atraso), descricao, agora);
+            registrarMetrica(operacao, "CONFIRMACAO_PENDENTE");
+            return;
+        }
+
+        if (operacoes.marcarFalhaDefinitiva(operacao, descricao, agora)) {
+            pagamentos.registrarDivergencia(
+                    operacao.idEmpresa(),
+                    operacao.idPagamento(),
+                    "RESULTADO_AMBIGUO_PROVEDOR",
+                    descricao,
+                    agora);
+        }
+        registrarMetrica(operacao, "RESULTADO_AMBIGUO");
+    }
+
+    @Transactional
     public int expirarPix() {
         Instant agora = relogio.instant();
         var expirados = pagamentos.bloquearPixExpirados(
                 agora,
                 propriedades.trabalhador().tamanhoLote());
         for (var pagamento : expirados) {
-            pagamentos.expirarPix(pagamento.idPagamento(), "Prazo da cobranca PIX expirado", agora);
+            if (!pagamentos.expirarPix(
+                    pagamento.idPagamento(),
+                    "Prazo da cobranca PIX expirado",
+                    agora)) {
+                continue;
+            }
             eventos.registrar(
                     PAGAMENTO_RECUSADO,
                     pagamento.idCompra(),

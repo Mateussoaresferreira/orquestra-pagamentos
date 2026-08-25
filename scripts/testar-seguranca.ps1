@@ -83,6 +83,18 @@ function Converter-Json {
     return $Valor | ConvertTo-Json -Depth 10 -Compress
 }
 
+function Obter-ConteudoTexto {
+    param([object] $Resposta)
+
+    if ($null -eq $Resposta.Content) {
+        return ''
+    }
+    if ($Resposta.Content -is [byte[]]) {
+        return [System.Text.Encoding]::UTF8.GetString($Resposta.Content)
+    }
+    return [string] $Resposta.Content
+}
+
 Write-Host '1/9 Conferindo saude e limite de exposicao...' -ForegroundColor Cyan
 $servicosHttp = [ordered]@{
     checkout = $UrlCheckout
@@ -219,7 +231,7 @@ Garantir ($logs -notmatch [regex]::Escape($tokenPagamento)) 'O token de pagament
 Write-Host '9/9 Validando respostas seguras e integridade dos bancos...' -ForegroundColor Cyan
 $jsonMalformado = Enviar-Http POST "$UrlCheckout/api/v1/compras" '{"idCliente":' $cabecalhosCompra
 Garantir ($jsonMalformado.StatusCode -eq 400) 'JSON malformado nao foi rejeitado com HTTP 400.'
-$erroPublico = $jsonMalformado.Content.ToLowerInvariant()
+$erroPublico = (Obter-ConteudoTexto $jsonMalformado).ToLowerInvariant()
 Garantir ($erroPublico -notmatch 'stacktrace|java\.|org\.springframework|psqlexception|sqlstate') `
     'A resposta de erro vazou detalhes internos da aplicacao.'
 

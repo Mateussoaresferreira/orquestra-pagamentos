@@ -1,6 +1,7 @@
 package br.com.orquestrapay.platform.config;
 
 import br.com.orquestrapay.platform.web.FiltroCabecalhosSeguranca;
+import br.com.orquestrapay.platform.web.FiltroParametrosInvalidos;
 import br.com.orquestrapay.platform.web.FiltroTamanhoRequisicao;
 import br.com.orquestrapay.platform.web.PropriedadesWeb;
 import br.com.orquestrapay.platform.web.TratadorExcecoes;
@@ -20,6 +21,14 @@ public class ConfiguracaoWeb {
     FilterRegistrationBean<FiltroCabecalhosSeguranca> filtroCabecalhosSeguranca() {
         var registro = new FilterRegistrationBean<>(new FiltroCabecalhosSeguranca());
         registro.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        registro.addUrlPatterns("/*");
+        return registro;
+    }
+
+    @Bean
+    FilterRegistrationBean<FiltroParametrosInvalidos> filtroParametrosInvalidos() {
+        var registro = new FilterRegistrationBean<>(new FiltroParametrosInvalidos());
+        registro.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
         registro.addUrlPatterns("/*");
         return registro;
     }

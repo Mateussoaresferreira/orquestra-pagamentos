@@ -3,6 +3,7 @@ package br.com.orquestrapay.provider.service;
 import java.net.URI;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -26,20 +27,24 @@ public class ServicoSimulador {
 
     private final ConcurrentHashMap<UUID, AtomicInteger> tentativas = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, RespostaAutorizacao> autorizacoes = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<UUID, AtomicInteger> respostasOcultadas = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, RespostaEstorno> estornos = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, CobrancaPix> pixPorCompra = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CobrancaPix> pixPorTxid = new ConcurrentHashMap<>();
     private final PropriedadesSimulador propriedades;
     private final RestClient http;
     private final ObjectMapper json;
+    private final GeradorBrCodePix geradorBrCode;
 
     public ServicoSimulador(
             PropriedadesSimulador propriedades,
             RestClient clienteWebhook,
-            ObjectMapper json) {
+            ObjectMapper json,
+            GeradorBrCodePix geradorBrCode) {
         this.propriedades = propriedades;
         this.http = clienteWebhook;
         this.json = json;
+        this.geradorBrCode = geradorBrCode;
     }
 
     public RespostaAutorizacao autorizar(PedidoAutorizacao pedido) {
@@ -75,6 +80,20 @@ public class ServicoSimulador {
         return autorizacoes.get(pedido.idCompra());
     }
 
+    public boolean deveOcultarResposta(PedidoAutorizacao pedido) {
+        if (!"tok_resposta_perdida".equals(pedido.tokenPagamento())
+                || !"principal".equals(propriedades.nome())) {
+            return false;
+        }
+        return respostasOcultadas
+                .computeIfAbsent(pedido.idCompra(), chave -> new AtomicInteger())
+                .incrementAndGet() <= 3;
+    }
+
+    public Optional<RespostaAutorizacao> consultarAutorizacao(UUID idCompra) {
+        return Optional.ofNullable(autorizacoes.get(idCompra));
+    }
+
     public RespostaCobrancaPix criarPix(PedidoCobrancaPix pedido) {
         validarUrlNotificacao(pedido.urlNotificacao());
         CobrancaPix existente = pixPorCompra.get(pedido.idCompra());
@@ -82,11 +101,12 @@ public class ServicoSimulador {
             return existente.resposta();
         }
 
-        String txid = "pix" + identificador();
+        String txid = "pix" + identificador().substring(0, 22);
+        var brCode = geradorBrCode.gerar(pedido.valor(), txid);
         var resposta = new RespostaCobrancaPix(
                 txid,
-                "000201ORQUESTRAPAY" + txid + "BRL" + pedido.valor().toPlainString(),
-                null,
+                brCode.copiaCola(),
+                brCode.imagemQrCodeBase64(),
                 Instant.now().plusSeconds(pedido.expiracaoSegundos()),
                 "ATIVA");
         var cobranca = new CobrancaPix(
@@ -148,7 +168,7 @@ public class ServicoSimulador {
     }
 
     private void indisponivel(String motivo) {
-        throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, motivo);
+        throw new ExcecaoIndisponibilidadeConfirmada(motivo);
     }
 
     private String identificador() {

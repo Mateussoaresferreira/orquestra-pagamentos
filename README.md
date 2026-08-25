@@ -7,7 +7,7 @@
 [![Apache Kafka 4.1](https://img.shields.io/badge/Apache%20Kafka-4.1.2-231F20?logo=apachekafka&logoColor=white)](https://kafka.apache.org/)
 [![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
-[![Testes](https://img.shields.io/badge/testes-139%20aprovados-2EA44F)](docs/TESTES.md)
+[![Testes](https://img.shields.io/badge/testes-200%20aprovados-2EA44F)](docs/TESTES.md)
 [![License MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Orquestra de Pagamentos é um backend distribuído que processa uma compra do
@@ -85,7 +85,7 @@ flowchart LR
 | Dados | PostgreSQL isolado por serviço, RDS Proxy e Redis |
 | Resiliência | Resilience4j, retry, circuit breaker, bulkhead, cotas Redis e DLT |
 | Segurança | OAuth2 Resource Server, JWT, Cognito, escopos e multiempresa |
-| Integrações | PIX assíncrono, webhooks HMAC e Spring Boot Starter tipado |
+| Integrações | PIX assíncrono, email SMTP, webhooks HMAC e Spring Boot Starter tipado |
 | Observabilidade | OpenTelemetry, Prometheus, Grafana, Tempo, Loki e Alloy |
 | Testes | JUnit 5, Testcontainers, Postman e k6 |
 | Entrega | Docker Compose, Helm, KEDA, Karpenter, EKS, Terraform e GitHub Actions |
@@ -99,7 +99,7 @@ flowchart LR
 | Risco | `8082` | Calcular sinais e pontuação de fraude |
 | Pagamento | `8083` | Rotear cartão/PIX, estornar, receber callbacks e conciliar |
 | Razão contábil | `8084` | Registrar partidas dobradas e agenda de recebíveis |
-| Notificação | `8085` | Entregar notificações e webhooks empresariais duráveis |
+| Notificação | `8085` | Entregar emails SMTP e webhooks empresariais com retry durável |
 | Provedor principal | `8090` | Produzir aprovação, PIX, recusa e instabilidade controladas |
 | Provedor contingência | `8091` | Comprovar fallback técnico entre adquirentes |
 | Receptor de webhooks | `8092` | Registrar callbacks locais no WireMock |
@@ -108,9 +108,10 @@ flowchart LR
 
 | Verificação | Resultado reproduzível |
 |---|---|
-| Testes Java | 139 testes JUnit/Testcontainers aprovados e regras JaCoCo atendidas |
+| Testes Java | 202 testes JUnit/Testcontainers aprovados e regras JaCoCo atendidas |
 | Fluxo Postman | 6 execuções isoladas, 304 requisições e 324 asserções sem falha |
 | Consistência | Estoque, risco, pagamento, razão, notificações e outboxes comparados entre serviços |
+| Interrupção sob carga | 319 compras aceitas, p95 de 315,68 ms, convergência em 87 s e nenhum efeito financeiro duplicado |
 | Tempo | Timestamps UTC validados entre resposta HTTP, persistência e ordem da saga |
 | Segurança | SQL injection, isolamento multiempresa, JWT, HMAC, SSRF e idempotência exercitados |
 | Varreduras | ZAP, Semgrep, Gitleaks e Trivy sem achados altos ou críticos no escopo auditado |
@@ -162,6 +163,21 @@ Execute também os caminhos de recusa por estoque, risco, pagamento, retentativa
 
 ```powershell
 .\scripts\testar-cenarios.ps1
+```
+
+Para comprovar a entrega SMTP real, interromper o servidor de email e validar
+retry e recuperação automática sem falso positivo de envio:
+
+```powershell
+.\scripts\testar-envio-email-real.ps1
+```
+
+Contratos de evento com versão desconhecida são rejeitados antes de alterar o
+domínio e seguem para a DLT depois dos retries configurados. O comportamento é
+reproduzido por:
+
+```powershell
+.\scripts\testar-versao-evento-dlt.ps1
 ```
 
 Por fim, execute a bateria adversarial. Ela tenta SQL injection, acesso entre
@@ -241,6 +257,7 @@ somente após um callback assinado e idempotente do provedor.
 | Loki | http://localhost:3100 | via Grafana |
 | Apicurio Registry | http://localhost:8088 | sem login local |
 | WireMock | http://localhost:8092/__admin/requests | sem login local |
+| Mailpit | http://localhost:8025 | sem login local |
 
 Os bancos locais usam usuário e senha `orquestrapay`. As portas são `5433` a `5438`, uma para cada serviço, e `5439` para o registro de esquemas. Essas credenciais existem somente para desenvolvimento.
 

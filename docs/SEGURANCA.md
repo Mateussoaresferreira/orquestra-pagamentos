@@ -86,6 +86,9 @@ máquina ou mTLS conforme o contrato do adquirente.
 ## Proteções de API
 
 - validação Bean Validation em todos os corpos de entrada;
+- rejeição de caracteres Unicode de controle ou formatação em identificadores,
+  tokens e chaves de idempotência, além de formato empresarial estrito para o
+  email que receberá a notificação;
 - validação de moedas pelo catálogo ISO 4217 antes de iniciar a saga;
 - restrições `CHECK` no PostgreSQL para estados, moeda, país, quantidades e
   impressão criptográfica do token;

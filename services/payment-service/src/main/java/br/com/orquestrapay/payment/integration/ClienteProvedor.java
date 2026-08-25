@@ -11,6 +11,8 @@ import br.com.orquestrapay.payment.api.RespostaCobrancaPixProvedor;
 import br.com.orquestrapay.payment.api.RespostaEstornoProvedor;
 import br.com.orquestrapay.payment.config.PropriedadesProvedor;
 import io.github.resilience4j.bulkhead.Bulkhead;
+import io.github.resilience4j.bulkhead.BulkheadFullException;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.github.resilience4j.retry.Retry;
@@ -119,7 +121,7 @@ public class ClienteProvedor {
                     "provedor", nome,
                     "operacao", operacao,
                     "resultado", "cota-excedida").increment();
-            throw new ExcecaoComunicacaoProvedor(nome, operacao, excecao);
+            throw falha(nome, operacao, excecao);
         } catch (ExcecaoRequisicaoProvedor excecao) {
             metricas.counter(
                     "orquestrapay.provedor.chamadas",
@@ -133,7 +135,31 @@ public class ClienteProvedor {
                     "provedor", nome,
                     "operacao", operacao,
                     "resultado", "falha").increment();
-            throw new ExcecaoComunicacaoProvedor(nome, operacao, excecao);
+            throw falha(nome, operacao, excecao);
         }
+    }
+
+    private ExcecaoComunicacaoProvedor falha(
+            String provedor,
+            String operacao,
+            RuntimeException causa) {
+        NaturezaFalhaProvedor natureza = falhaAntesDoEnvio(causa)
+                ? NaturezaFalhaProvedor.SEGURA_PARA_FALLBACK
+                : NaturezaFalhaProvedor.RESULTADO_AMBIGUO;
+        return new ExcecaoComunicacaoProvedor(provedor, operacao, natureza, causa);
+    }
+
+    private boolean falhaAntesDoEnvio(Throwable falha) {
+        Throwable atual = falha;
+        while (atual != null) {
+            if (atual instanceof ExcecaoCotaProvedor
+                    || atual instanceof ExcecaoIndisponibilidadeConfirmadaProvedor
+                    || atual instanceof BulkheadFullException
+                    || atual instanceof CallNotPermittedException) {
+                return true;
+            }
+            atual = atual.getCause();
+        }
+        return false;
     }
 }

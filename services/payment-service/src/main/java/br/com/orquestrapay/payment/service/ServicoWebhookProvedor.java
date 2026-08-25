@@ -14,9 +14,11 @@ import java.util.HexFormat;
 import br.com.orquestrapay.contracts.ResultadoPagamento;
 import br.com.orquestrapay.payment.api.NotificacaoProvedor;
 import br.com.orquestrapay.payment.config.PropriedadesPagamentos;
+import br.com.orquestrapay.payment.data.RepositorioOperacoesPagamento;
 import br.com.orquestrapay.payment.data.RepositorioPagamentos;
 import br.com.orquestrapay.payment.data.RepositorioWebhooksProvedor;
 import br.com.orquestrapay.payment.domain.StatusPagamento;
+import br.com.orquestrapay.payment.domain.TipoOperacaoPagamento;
 import br.com.orquestrapay.payment.integration.CatalogoProvedores;
 import br.com.orquestrapay.platform.event.RegistroEventos;
 import br.com.orquestrapay.platform.security.AssinaturaHmac;
@@ -37,6 +39,7 @@ public class ServicoWebhookProvedor {
     private final CatalogoProvedores provedores;
     private final RepositorioWebhooksProvedor webhooks;
     private final RepositorioPagamentos pagamentos;
+    private final RepositorioOperacoesPagamento operacoes;
     private final RegistroEventos eventos;
     private final PropriedadesPagamentos propriedades;
     private final ObjectMapper json;
@@ -48,6 +51,7 @@ public class ServicoWebhookProvedor {
             CatalogoProvedores provedores,
             RepositorioWebhooksProvedor webhooks,
             RepositorioPagamentos pagamentos,
+            RepositorioOperacoesPagamento operacoes,
             RegistroEventos eventos,
             PropriedadesPagamentos propriedades,
             ObjectMapper json,
@@ -57,6 +61,7 @@ public class ServicoWebhookProvedor {
         this.provedores = provedores;
         this.webhooks = webhooks;
         this.pagamentos = pagamentos;
+        this.operacoes = operacoes;
         this.eventos = eventos;
         this.propriedades = propriedades;
         this.json = json;
@@ -96,21 +101,42 @@ public class ServicoWebhookProvedor {
 
         NotificacaoProvedor notificacao = ler(conteudo);
         validar(notificacao);
-        if (!webhooks.registrar(
+        var resultadoRegistro = webhooks.registrar(
                 nomeCanonico,
                 notificacao.idEvento(),
                 calcularHash(conteudo),
-                agora)) {
+                agora);
+        if (resultadoRegistro == RepositorioWebhooksProvedor.ResultadoRegistro.DUPLICADO) {
             metricas.counter(
                     "orquestrapay.webhooks.provedor",
                     "provedor", nomeCanonico,
                     "resultado", "duplicado").increment();
             return;
         }
+        if (resultadoRegistro == RepositorioWebhooksProvedor.ResultadoRegistro.CONFLITANTE) {
+            metricas.counter(
+                    "orquestrapay.webhooks.provedor",
+                    "provedor", nomeCanonico,
+                    "resultado", "conflitante").increment();
+            throw new ExcecaoNegocio(
+                    HttpStatus.CONFLICT,
+                    "webhook-conflitante",
+                    "O identificador do webhook ja foi usado com outro conteudo");
+        }
 
         var pagamento = pagamentos.bloquearPorPix(nomeCanonico, notificacao.txid())
                 .orElse(null);
-        if (pagamento == null || !pagamento.idCompra().equals(notificacao.idCompra())) {
+        if (pagamento == null) {
+            metricas.counter(
+                    "orquestrapay.webhooks.provedor",
+                    "provedor", nomeCanonico,
+                    "resultado", "pagamento_ainda_indisponivel").increment();
+            throw new ExcecaoNegocio(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "pagamento-webhook-indisponivel",
+                    "O pagamento ainda nao esta disponivel; repita o webhook");
+        }
+        if (!pagamento.idCompra().equals(notificacao.idCompra())) {
             webhooks.concluir(
                     nomeCanonico,
                     notificacao.idEvento(),
@@ -125,56 +151,86 @@ public class ServicoWebhookProvedor {
             return;
         }
 
-        switch (notificacao.status()) {
+        ResultadoAplicacao resultado = switch (notificacao.status()) {
             case "CONFIRMADO" -> confirmar(pagamento, notificacao, agora);
             case "EXPIRADO" -> expirar(pagamento, notificacao, agora);
             case "DEVOLVIDO" -> devolver(pagamento, notificacao, agora);
             default -> throw new IllegalStateException("Status de webhook nao suportado");
-        }
+        };
         webhooks.concluir(
                 nomeCanonico,
                 notificacao.idEvento(),
                 pagamento.idPagamento(),
-                "PROCESSADO",
-                "Evento aplicado de forma idempotente",
+                resultado.statusWebhook(),
+                resultado.motivo(),
                 agora);
         metricas.counter(
                 "orquestrapay.webhooks.provedor",
                 "provedor", nomeCanonico,
-                "resultado", "processado").increment();
+                "resultado", resultado.metrica()).increment();
     }
 
-    private void confirmar(
+    private ResultadoAplicacao confirmar(
             RepositorioPagamentos.Pagamento pagamento,
             NotificacaoProvedor notificacao,
             Instant agora) {
-        if (pagamento.status() != StatusPagamento.AGUARDANDO_CONFIRMACAO) {
-            return;
+        if (pagamento.status() == StatusPagamento.AGUARDANDO_CONFIRMACAO
+                && pagamentos.confirmarPix(pagamento.idPagamento(), notificacao.txid(), agora)) {
+            registrarEvento(PAGAMENTO_AUTORIZADO, pagamento, true, "PIX confirmado", StatusPagamento.AUTORIZADO);
+            return ResultadoAplicacao.processado("Confirmacao PIX aplicada");
         }
-        pagamentos.confirmarPix(pagamento.idPagamento(), notificacao.txid(), agora);
-        registrarEvento(PAGAMENTO_AUTORIZADO, pagamento, true, "PIX confirmado", StatusPagamento.AUTORIZADO);
+
+        if (pagamento.status() == StatusPagamento.EXPIRADO
+                && pagamentos.agendarEstornoPixConfirmadoAposExpiracao(
+                        pagamento.idPagamento(),
+                        notificacao.txid(),
+                        agora)) {
+            String detalhes = "O provedor confirmou o PIX depois da expiracao; "
+                    + "a compra permanece recusada e a devolucao foi agendada";
+            pagamentos.registrarDivergencia(
+                    pagamento.idEmpresa(),
+                    pagamento.idPagamento(),
+                    "PIX_CONFIRMADO_APOS_EXPIRACAO",
+                    detalhes,
+                    agora);
+            operacoes.adicionar(pagamento.idPagamento(), TipoOperacaoPagamento.ESTORNAR, agora);
+            metricas.counter("orquestrapay.pix.confirmacoes.tardias").increment();
+            return ResultadoAplicacao.processado("Confirmacao tardia recebida; devolucao automatica agendada");
+        }
+
+        return ResultadoAplicacao.ignorado(
+                "Confirmacao PIX incompativel com o estado " + pagamento.status().name());
     }
 
-    private void expirar(
+    private ResultadoAplicacao expirar(
             RepositorioPagamentos.Pagamento pagamento,
             NotificacaoProvedor notificacao,
             Instant agora) {
-        if (pagamento.status() != StatusPagamento.AGUARDANDO_CONFIRMACAO) {
-            return;
+        if (pagamento.status() == StatusPagamento.AGUARDANDO_CONFIRMACAO
+                && pagamentos.expirarPix(
+                        pagamento.idPagamento(),
+                        "PIX expirado no provedor",
+                        agora)) {
+            registrarEvento(PAGAMENTO_RECUSADO, pagamento, false, "PIX expirado", StatusPagamento.EXPIRADO);
+            return ResultadoAplicacao.processado("Expiracao PIX aplicada");
         }
-        pagamentos.expirarPix(pagamento.idPagamento(), "PIX expirado no provedor", agora);
-        registrarEvento(PAGAMENTO_RECUSADO, pagamento, false, "PIX expirado", StatusPagamento.EXPIRADO);
+        return ResultadoAplicacao.ignorado(
+                "Expiracao PIX incompativel com o estado " + pagamento.status().name());
     }
 
-    private void devolver(
+    private ResultadoAplicacao devolver(
             RepositorioPagamentos.Pagamento pagamento,
             NotificacaoProvedor notificacao,
             Instant agora) {
         if (pagamento.status() == StatusPagamento.ESTORNADO) {
-            return;
+            return ResultadoAplicacao.ignorado("Pagamento PIX ja devolvido");
         }
-        pagamentos.marcarEstornado(pagamento.idPagamento(), notificacao.txid(), agora);
-        registrarEvento(PAGAMENTO_ESTORNADO, pagamento, true, "PIX devolvido", StatusPagamento.ESTORNADO);
+        if (pagamentos.marcarEstornado(pagamento.idPagamento(), notificacao.txid(), agora)) {
+            registrarEvento(PAGAMENTO_ESTORNADO, pagamento, true, "PIX devolvido", StatusPagamento.ESTORNADO);
+            return ResultadoAplicacao.processado("Devolucao PIX aplicada");
+        }
+        return ResultadoAplicacao.ignorado(
+                "Devolucao PIX incompativel com o estado " + pagamento.status().name());
     }
 
     private void registrarEvento(
@@ -237,5 +293,19 @@ public class ServicoWebhookProvedor {
 
     private ExcecaoNegocio problema(String codigo, String detalhe) {
         return new ExcecaoNegocio(HttpStatus.UNAUTHORIZED, codigo, detalhe);
+    }
+
+    private record ResultadoAplicacao(
+            String statusWebhook,
+            String motivo,
+            String metrica) {
+
+        private static ResultadoAplicacao processado(String motivo) {
+            return new ResultadoAplicacao("PROCESSADO", motivo, "processado");
+        }
+
+        private static ResultadoAplicacao ignorado(String motivo) {
+            return new ResultadoAplicacao("IGNORADO", motivo, "ignorado");
+        }
     }
 }

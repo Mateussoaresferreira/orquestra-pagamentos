@@ -8,6 +8,8 @@ param(
     [int] $DuracaoInterrupcaoSegundos = 10,
     [ValidateRange(1, 10000000)]
     [int] $MinimoComprasAceitas = 500,
+    [ValidateRange(0, 10000000)]
+    [int] $MaximoRequisicoesLimitadas = 50,
     [ValidateRange(5, 2000)]
     [int] $VusMaximos = 80,
     [string] $DuracaoAquecimento = '20s',
@@ -49,7 +51,8 @@ try {
             $Vus,
             $DuracaoAquecimento,
             $DuracaoSubida,
-            $DuracaoReducao
+            $DuracaoReducao,
+            $MaximoLimitadas
         )
         & $ScriptCarga `
             -TaxaPico $Taxa `
@@ -60,7 +63,7 @@ try {
             -VusPreAlocados ([Math]::Max(10, [Math]::Floor($Vus / 2))) `
             -VusMaximos $Vus `
             -MaximoIteracoesDescartadas 20 `
-            -MaximoRequisicoesLimitadas 0 `
+            -MaximoRequisicoesLimitadas $MaximoLimitadas `
             -MinimoTaxaAceitacao 0.99 `
             -IdTrabalhador 'interrupcao' `
             -DuracaoAquecimento $DuracaoAquecimento `
@@ -74,7 +77,8 @@ try {
             $VusMaximos,
             $DuracaoAquecimento,
             $DuracaoSubida,
-            $DuracaoReducao
+            $DuracaoReducao,
+            $MaximoRequisicoesLimitadas
         )
 
     Start-Sleep -Seconds $AguardarAntesInterrupcaoSegundos

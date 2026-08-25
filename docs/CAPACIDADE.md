@@ -56,11 +56,13 @@ gerador ficou entre 166 e 189 ms. Uma segunda execução curta, já com a audito
 integrada ao script, criou 53 compras e terminou com todos os domínios
 consistentes.
 
-No ensaio de interrupção, o serviço de pagamento foi encerrado à força durante
-a entrada de carga. O checkout aceitou 85 compras com p95 de 91 ms, o backlog
-permaneceu durável enquanto o consumidor estava ausente e convergiu 62 segundos
-depois da reinicialização. Nenhuma compra recebeu pagamento duplicado e a
-auditoria final encontrou estoque, outboxes e partidas dobradas consistentes.
+No ensaio final de interrupção, o serviço de pagamento foi encerrado à força
+durante a entrada de carga. O checkout aceitou 319 compras sem falha HTTP,
+resposta inesperada ou limitação, com p95 de 315,68 ms. O backlog permaneceu
+durável enquanto o consumidor estava ausente e convergiu 87 segundos depois da
+reinicialização. Nenhuma compra recebeu efeito financeiro duplicado e a
+auditoria final encontrou os seis bancos, estoque, outboxes e partidas dobradas
+consistentes.
 
 Esses testes comprovam distribuição da geração, recuperação de consumidor e
 idempotência sob redelivery na bancada local. Eles ainda não substituem um soak

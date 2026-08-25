@@ -11,6 +11,8 @@ import static br.com.orquestrapay.contracts.TiposEventos.PAGAMENTO_PENDENTE;
 import static br.com.orquestrapay.contracts.TiposEventos.PAGAMENTO_RECUSADO;
 import static br.com.orquestrapay.contracts.TiposEventos.RISCO_APROVADO;
 import static br.com.orquestrapay.contracts.TiposEventos.RISCO_REPROVADO;
+import static br.com.orquestrapay.contracts.VersoesEventos.VERSAO_INICIAL;
+import static br.com.orquestrapay.contracts.VersoesEventos.exigirSuportada;
 
 import java.util.Set;
 
@@ -44,6 +46,7 @@ public class ConsumidorSaga {
     @KafkaListener(topics = "${orquestrapay.eventos.topicos.checkout}")
     public void receber(EventoSaga evento) {
         if (EVENTOS_TRATADOS.contains(evento.getTipo())) {
+            exigirSuportada(evento, VERSAO_INICIAL);
             checkout.tratar(evento);
         }
     }

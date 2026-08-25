@@ -90,6 +90,7 @@ ORDER BY id_compra;
 
 $pagamentos = Criar-Indice (Consultar-Banco banco-pagamento orquestrapay_pagamento @'
 SELECT id_compra::text || '|' || id_empresa::text || '|' || valor::text || '|' || status || '|' || id_pagamento::text
+       || '|' || metodo_pagamento
 FROM pagamento
 ORDER BY id_compra;
 '@) 'pagamento'
@@ -130,7 +131,8 @@ foreach ($idCompra in $compras.Keys) {
     if ($finalizada) {
         $notificacao = $notificacoes[$idCompra]
         Garantir ($notificacao[1] -eq $idEmpresa) "Empresa divergente na notificacao da compra $idCompra."
-        Garantir ($notificacao[2] -eq 'ENVIADA') "Notificacao nao enviada para a compra $idCompra."
+        Garantir ($notificacao[2] -eq 'ENVIADA') `
+            "Notificacao da compra $idCompra terminou com status $($notificacao[2]), em vez de ENVIADA."
     }
     else {
         Garantir (-not $notificacoes.ContainsKey($idCompra)) `
@@ -164,7 +166,12 @@ foreach ($idCompra in $compras.Keys) {
     Garantir ($pagamento[1] -eq $idEmpresa) "Empresa divergente no pagamento da compra $idCompra."
     Garantir ((Converter-Decimal $pagamento[2]) -eq $valor) "Valor divergente no pagamento da compra $idCompra."
 
-    if ($pagamento[3] -in @('PENDENTE', 'PROCESSANDO', 'AGUARDANDO_CONFIRMACAO', 'FALHA_TECNICA')) {
+    if ($pagamento[3] -in @(
+            'PENDENTE',
+            'PROCESSANDO',
+            'CONFIRMACAO_PENDENTE',
+            'AGUARDANDO_CONFIRMACAO',
+            'FALHA_TECNICA')) {
         Garantir ($compra[3] -eq 'AGUARDANDO_PAGAMENTO') `
             "Pagamento em andamento da compra $idCompra nao corresponde ao estado do checkout."
         Garantir ($reserva[2] -eq 'RESERVADA') `
@@ -174,11 +181,38 @@ foreach ($idCompra in $compras.Keys) {
         continue
     }
 
+    if ($pagamento[3] -in @('ESTORNO_PENDENTE', 'ESTORNANDO')) {
+        if ($transacoes.ContainsKey($idCompra)) {
+            Garantir ($compra[3] -eq 'COMPENSANDO') `
+                "Estorno contabil em andamento da compra $idCompra nao corresponde ao checkout."
+            Garantir ($reserva[2] -in @('RESERVADA', 'LIBERADA')) `
+                "Reserva em estado invalido durante a compensacao da compra $idCompra."
+        }
+        else {
+            Garantir ($pagamento[5] -eq 'PIX') `
+                "Estorno sem tentativa contabil na compra $idCompra nao e PIX."
+            Garantir ($compra[3] -eq 'RECUSADA') `
+                "PIX tardio em estorno na compra $idCompra nao permaneceu recusado."
+            Garantir ($reserva[2] -eq 'LIBERADA') `
+                "Estoque do PIX tardio $idCompra nao foi liberado."
+        }
+        Garantir ($compra[5] -eq $pagamento[4]) `
+            "Pagamento em estorno divergente na compra $idCompra."
+        continue
+    }
+
     switch ($pagamento[3]) {
         'RECUSADO' {
             Garantir ($compra[3] -eq 'RECUSADA') "Compra $idCompra deveria estar recusada pelo emissor."
             Garantir ($reserva[2] -eq 'LIBERADA') "Estoque da compra $idCompra nao foi liberado apos recusa do emissor."
             Garantir (-not $transacoes.ContainsKey($idCompra)) "Pagamento recusado da compra $idCompra chegou a razao."
+        }
+        'EXPIRADO' {
+            Garantir ($pagamento[5] -eq 'PIX') "Pagamento expirado da compra $idCompra nao e PIX."
+            Garantir ($compra[3] -eq 'RECUSADA') "Compra com PIX expirado $idCompra nao foi recusada."
+            Garantir ($reserva[2] -eq 'LIBERADA') "Estoque da compra com PIX expirado $idCompra nao foi liberado."
+            Garantir ($compra[5] -eq $pagamento[4]) "Pagamento PIX expirado divergente na compra $idCompra."
+            Garantir (-not $transacoes.ContainsKey($idCompra)) "PIX expirado da compra $idCompra chegou a razao."
         }
         'AUTORIZADO' {
             Garantir ($compra[3] -eq 'CONCLUIDA') "Compra autorizada $idCompra nao foi concluida."
@@ -187,10 +221,18 @@ foreach ($idCompra in $compras.Keys) {
             Garantir ($transacoes.ContainsKey($idCompra)) "Compra autorizada $idCompra nao chegou a razao."
         }
         'ESTORNADO' {
-            Garantir ($compra[3] -eq 'COMPENSADA') "Compra estornada $idCompra nao foi compensada."
+            if ($transacoes.ContainsKey($idCompra)) {
+                Garantir ($compra[3] -eq 'COMPENSADA') `
+                    "Compra estornada $idCompra com tentativa contabil nao foi compensada."
+            }
+            else {
+                Garantir ($pagamento[5] -eq 'PIX') `
+                    "Pagamento estornado sem tentativa contabil na compra $idCompra nao e PIX."
+                Garantir ($compra[3] -eq 'RECUSADA') `
+                    "PIX estornado antes da contabilidade na compra $idCompra nao permaneceu recusado."
+            }
             Garantir ($reserva[2] -eq 'LIBERADA') "Estoque da compra compensada $idCompra nao foi liberado."
             Garantir ($compra[5] -eq $pagamento[4]) "Pagamento estornado divergente na compra $idCompra."
-            Garantir ($transacoes.ContainsKey($idCompra)) "Compra estornada $idCompra nao possui tentativa contabil."
         }
         default {
             throw "Status de pagamento inesperado na compra ${idCompra}: $($pagamento[3])."

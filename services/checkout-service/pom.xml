@@ -11,7 +11,7 @@
     </parent>
     <artifactId>servico-checkout</artifactId>
     <name>Servico de checkout</name>
-    <properties><jacoco.minimo.linhas>0.20</jacoco.minimo.linhas></properties>
+    <properties><jacoco.minimo.linhas>0.35</jacoco.minimo.linhas></properties>
 
     <dependencies>
         <dependency><groupId>br.com.orquestrapay</groupId><artifactId>nucleo-plataforma</artifactId><version>${project.version}</version></dependency>

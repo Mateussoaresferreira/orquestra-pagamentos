@@ -24,6 +24,13 @@ public class RepositorioRazao {
         this.banco = banco;
     }
 
+    public void bloquearCompra(UUID idEmpresa, UUID idCompra) {
+        banco.sql("SELECT 1 FROM pg_advisory_xact_lock(hashtextextended(:valor, 0))")
+                .param("valor", idEmpresa + ":" + idCompra)
+                .query(Integer.class)
+                .single();
+    }
+
     public boolean existePorCompra(UUID idEmpresa, UUID idCompra) {
         return banco.sql("""
                         SELECT COUNT(*) FROM transacao_contabil

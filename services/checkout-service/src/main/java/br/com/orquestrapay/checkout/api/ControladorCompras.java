@@ -6,6 +6,11 @@ import java.util.UUID;
 
 import br.com.orquestrapay.checkout.service.ServicoCheckout;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,8 +33,19 @@ public class ControladorCompras {
 
     @PostMapping
     @Operation(summary = "Inicia uma compra idempotente e sua saga distribuida")
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "202",
+                    description = "Compra aceita para processamento assincrono",
+                    content = @Content(schema = @Schema(implementation = RespostaCompra.class))),
+            @ApiResponse(responseCode = "400", description = "Requisicao invalida"),
+            @ApiResponse(responseCode = "409", description = "Conflito de idempotencia"),
+            @ApiResponse(responseCode = "429", description = "Limite de admissao atingido")
+    })
     ResponseEntity<RespostaCompra> iniciar(
+            @Parameter(example = "00000000-0000-0000-0000-000000000001")
             @RequestHeader("X-Empresa-Id") UUID idEmpresa,
+            @Parameter(example = "compra-001")
             @RequestHeader("Idempotency-Key") String chaveIdempotencia,
             @Valid @RequestBody NovaCompra requisicao) {
         var resultado = checkout.iniciar(idEmpresa, chaveIdempotencia, requisicao);

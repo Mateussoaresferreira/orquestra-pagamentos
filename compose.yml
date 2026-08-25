@@ -20,6 +20,7 @@ x-service-environment: &service-environment
   TOPICO_RAZAO: orquestrapay.razao.v1
   TOPICO_NOTIFICACAO: orquestrapay.notificacao.v1
   TOPICOS_PARTICOES: 12
+  ORQUESTRAPAY_EVENTOS_CONCORRENCIA_PUBLICACAO: ${EVENTOS_CONCORRENCIA_PUBLICACAO:-20}
   SEGURANCA_HABILITADA: "false"
   OIDC_EMISSOR: ${OIDC_EMISSOR:-}
   OIDC_CLIENTE_ID: ${OIDC_CLIENTE_ID:-}
@@ -243,6 +244,21 @@ services:
     ports: ["127.0.0.1:8092:8080"]
     networks: [orquestrapay]
 
+  mailpit:
+    image: axllent/mailpit:v1.31.0@sha256:c96991d9bef73594c246d89ca81411d4e916f03e76a7d2d72fa2ab5dd3c9ce24
+    environment:
+      MP_DATABASE: /data/mailpit.db
+      MP_MAX_MESSAGES: 5000
+    volumes:
+      - dados_mailpit:/data
+    ports: ["127.0.0.1:1025:1025", "127.0.0.1:8025:8025"]
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks: [orquestrapay]
+
   simulador-provedor:
     <<: *service-defaults
     image: orquestrapay/simulador-provedor:local
@@ -295,6 +311,7 @@ services:
         CAMINHO_ARTEFATO: target/servico-checkout-1.0.0.jar
     environment:
       <<: *service-environment
+      ORQUESTRAPAY_EVENTOS_CONCORRENCIA_PUBLICACAO: ${EVENTOS_CONCORRENCIA_CHECKOUT:-50}
       BANCO_URL: jdbc:postgresql://banco-checkout:5432/orquestrapay_checkout
       REDIS_HOST: redis
       REDIS_PORTA: 6379
@@ -411,6 +428,9 @@ services:
       <<: *service-environment
       BANCO_URL: jdbc:postgresql://banco-notificacao:5432/orquestrapay_notificacao
       WEBHOOKS_PERMITIR_ENDERECOS_PRIVADOS: "true"
+      SMTP_HOST: mailpit
+      SMTP_PORTA: 1025
+      NOTIFICACOES_REMETENTE: nao-responda@orquestrapay.local
       OTEL_SERVICE_NAME: servico-notificacao
       MANAGEMENT_METRICS_TAGS_APPLICATION: servico-notificacao
     ports: ["127.0.0.1:8085:8080"]
@@ -420,6 +440,7 @@ services:
       criador-topicos: {condition: service_completed_successfully}
       registro-esquemas: {condition: service_started}
       receptor-webhook: {condition: service_started}
+      mailpit: {condition: service_healthy}
 
   coletor-otel:
     image: otel/opentelemetry-collector-contrib:0.138.0
@@ -514,3 +535,4 @@ volumes:
   dados_tempo:
   dados_loki:
   dados_grafana:
+  dados_mailpit:

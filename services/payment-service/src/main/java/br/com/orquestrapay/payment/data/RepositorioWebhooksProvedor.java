@@ -16,12 +16,12 @@ public class RepositorioWebhooksProvedor {
         this.banco = banco;
     }
 
-    public boolean registrar(
+    public ResultadoRegistro registrar(
             String provedor,
             UUID idEvento,
             String hashConteudo,
             Instant agora) {
-        return banco.sql("""
+        int inseridos = banco.sql("""
                         INSERT INTO webhook_provedor_recebido (
                             id_webhook, provedor, id_evento_provedor,
                             hash_conteudo, status_processamento, recebido_em
@@ -36,7 +36,24 @@ public class RepositorioWebhooksProvedor {
                 .param("idEvento", idEvento)
                 .param("hashConteudo", hashConteudo)
                 .param("agora", DatasSql.gravar(agora))
-                .update() == 1;
+                .update();
+        if (inseridos == 1) {
+            return ResultadoRegistro.NOVO;
+        }
+
+        String hashExistente = banco.sql("""
+                        SELECT hash_conteudo
+                          FROM webhook_provedor_recebido
+                         WHERE provedor = :provedor
+                           AND id_evento_provedor = :idEvento
+                        """)
+                .param("provedor", provedor)
+                .param("idEvento", idEvento)
+                .query(String.class)
+                .single();
+        return hashConteudo.equals(hashExistente)
+                ? ResultadoRegistro.DUPLICADO
+                : ResultadoRegistro.CONFLITANTE;
     }
 
     public void concluir(
@@ -66,5 +83,11 @@ public class RepositorioWebhooksProvedor {
             comando = comando.param("idPagamento", idPagamento);
         }
         comando.update();
+    }
+
+    public enum ResultadoRegistro {
+        NOVO,
+        DUPLICADO,
+        CONFLITANTE
     }
 }

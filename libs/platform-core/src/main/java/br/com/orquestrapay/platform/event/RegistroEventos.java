@@ -5,6 +5,8 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
+import static br.com.orquestrapay.contracts.VersoesEventos.VERSAO_INICIAL;
+
 import io.micrometer.tracing.Tracer;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
@@ -34,7 +36,15 @@ public class RegistroEventos {
             UUID idCompra,
             String origem,
             Object dados) {
-        return registrar(tipo, 1, idCorrelacao, idEmpresa, idCompra, origem, dados, traceparentAtual());
+        return registrar(
+                tipo,
+                VERSAO_INICIAL,
+                idCorrelacao,
+                idEmpresa,
+                idCompra,
+                origem,
+                dados,
+                traceparentAtual());
     }
 
     public UUID registrar(

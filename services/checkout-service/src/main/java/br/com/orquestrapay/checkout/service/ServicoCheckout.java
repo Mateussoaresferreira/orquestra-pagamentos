@@ -436,12 +436,20 @@ public class ServicoCheckout {
     }
 
     private void validarChave(String chave) {
-        if (chave == null || chave.isBlank() || chave.length() > 120) {
+        if (chave == null
+                || chave.isBlank()
+                || chave.length() > 120
+                || chave.codePoints().anyMatch(ServicoCheckout::caractereDeControle)) {
             throw new ExcecaoNegocio(
                     HttpStatus.BAD_REQUEST,
                     "chave-idempotencia-invalida",
-                    "O cabecalho Idempotency-Key deve ter entre 1 e 120 caracteres");
+                    "O cabecalho Idempotency-Key deve ter entre 1 e 120 caracteres imprimiveis");
         }
+    }
+
+    private static boolean caractereDeControle(int caractere) {
+        int tipo = Character.getType(caractere);
+        return Character.isISOControl(caractere) || tipo == Character.FORMAT;
     }
 
     private void validarProdutosUnicos(NovaCompra requisicao) {

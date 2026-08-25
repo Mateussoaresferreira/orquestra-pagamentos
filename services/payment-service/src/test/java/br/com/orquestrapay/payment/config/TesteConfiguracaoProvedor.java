@@ -13,6 +13,8 @@ import java.time.Duration;
 import java.util.concurrent.Executors;
 
 import br.com.orquestrapay.payment.integration.ExcecaoRequisicaoProvedor;
+import br.com.orquestrapay.payment.integration.ExcecaoIndisponibilidadeConfirmadaProvedor;
+import br.com.orquestrapay.payment.integration.ExcecaoResultadoAmbiguoProvedor;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.ResourceAccessException;
 
@@ -89,6 +91,57 @@ class TesteConfiguracaoProvedor {
         } finally {
             servidor.stop(0);
         }
+    }
+
+    @Test
+    void deveAceitarFallbackSomenteQuandoOProvedorConfirmarQueNaoProcessou() throws Exception {
+        var servidor = servidorComResposta(503, "NAO_PROCESSADA");
+        try {
+            var cliente = new ConfiguracaoProvedor().clienteHttpProvedor(
+                    propriedadesDoServidor(servidor));
+
+            assertThatThrownBy(() -> cliente.get().uri("/teste").retrieve().toBodilessEntity())
+                    .isInstanceOf(ExcecaoIndisponibilidadeConfirmadaProvedor.class);
+        } finally {
+            servidor.stop(0);
+        }
+    }
+
+    @Test
+    void deveTratarErroDoProvedorSemConfirmacaoComoResultadoAmbiguo() throws Exception {
+        var servidor = servidorComResposta(503, null);
+        try {
+            var cliente = new ConfiguracaoProvedor().clienteHttpProvedor(
+                    propriedadesDoServidor(servidor));
+
+            assertThatThrownBy(() -> cliente.get().uri("/teste").retrieve().toBodilessEntity())
+                    .isInstanceOf(ExcecaoResultadoAmbiguoProvedor.class);
+        } finally {
+            servidor.stop(0);
+        }
+    }
+
+    private HttpServer servidorComResposta(int status, String resultado) throws IOException {
+        var servidor = HttpServer.create(
+                new InetSocketAddress(InetAddress.getLoopbackAddress(), 0),
+                1);
+        servidor.createContext("/teste", requisicao -> {
+            if (resultado != null) {
+                requisicao.getResponseHeaders().set("X-Orquestra-Resultado", resultado);
+            }
+            requisicao.sendResponseHeaders(status, -1);
+            requisicao.close();
+        });
+        servidor.start();
+        return servidor;
+    }
+
+    private PropriedadesProvedor propriedadesDoServidor(HttpServer servidor) {
+        return new PropriedadesProvedor(
+                URI.create("http://127.0.0.1:" + servidor.getAddress().getPort()),
+                Duration.ofSeconds(1),
+                Duration.ofSeconds(1),
+                "chave-api-provedor-para-testes");
     }
 
     private void responderComAtraso(HttpExchange requisicao) throws IOException {

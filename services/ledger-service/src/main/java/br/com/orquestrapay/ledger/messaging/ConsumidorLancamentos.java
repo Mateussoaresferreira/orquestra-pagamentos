@@ -1,6 +1,8 @@
 package br.com.orquestrapay.ledger.messaging;
 
 import static br.com.orquestrapay.contracts.TiposEventos.REGISTRAR_LANCAMENTOS;
+import static br.com.orquestrapay.contracts.VersoesEventos.VERSAO_INICIAL;
+import static br.com.orquestrapay.contracts.VersoesEventos.exigirSuportada;
 
 import br.com.orquestrapay.contracts.EventoSaga;
 import br.com.orquestrapay.ledger.service.ServicoRazao;
@@ -19,6 +21,7 @@ public class ConsumidorLancamentos {
     @KafkaListener(topics = "${orquestrapay.eventos.topicos.razao}")
     public void receber(EventoSaga evento) {
         if (REGISTRAR_LANCAMENTOS.equals(evento.getTipo())) {
+            exigirSuportada(evento, VERSAO_INICIAL);
             razao.registrar(evento);
         }
     }

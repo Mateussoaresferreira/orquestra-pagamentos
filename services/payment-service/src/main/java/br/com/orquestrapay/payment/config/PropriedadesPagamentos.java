@@ -40,6 +40,10 @@ public record PropriedadesPagamentos(
             validarDuracao(duracaoBloqueio, "duracaoBloqueio");
             validarDuracao(atrasoInicial, "atrasoInicial");
             validarDuracao(atrasoMaximo, "atrasoMaximo");
+            if (atrasoMaximo.compareTo(atrasoInicial) < 0) {
+                throw new IllegalArgumentException(
+                        "O atraso maximo deve ser maior ou igual ao atraso inicial");
+            }
         }
 
         static Trabalhador padrao() {

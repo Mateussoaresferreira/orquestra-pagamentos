@@ -268,7 +268,7 @@ public class RepositorioWebhooks {
                         """)
                 .param("idEmpresa", idEmpresa)
                 .param("limite", tamanho)
-                .param("deslocamento", pagina * tamanho)
+                .param("deslocamento", (long) pagina * tamanho)
                 .query(this::mapearResposta)
                 .list();
         return new PaginaEntregasWebhook(itens, pagina, tamanho, total);

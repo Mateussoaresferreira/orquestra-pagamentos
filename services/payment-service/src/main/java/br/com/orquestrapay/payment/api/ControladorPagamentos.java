@@ -61,7 +61,7 @@ public class ControladorPagamentos {
     PaginaDivergencias listarDivergencias(
             @RequestHeader("X-Empresa-Id") UUID idEmpresa,
             @RequestParam(required = false) String status,
-            @RequestParam(defaultValue = "0") @Min(0) int pagina,
+            @RequestParam(defaultValue = "0") @Min(0) @Max(100_000) int pagina,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int tamanho) {
         return conciliacao.listarDivergencias(idEmpresa, status, pagina, tamanho);
     }

@@ -11,7 +11,11 @@ public record EventoQuarentena(
         UUID idCompra,
         String origem,
         int tentativas,
+        int reprocessamentos,
         String ultimoErro,
         Instant ocorridoEm,
-        Instant descartadoEm) {
+        Instant descartadoEm,
+        String status,
+        Instant resolvidoEm,
+        String motivoResolucao) {
 }

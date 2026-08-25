@@ -4,7 +4,9 @@ import java.util.LinkedHashMap;
 
 import br.com.orquestrapay.payment.integration.CatalogoProvedores;
 import br.com.orquestrapay.payment.integration.ClienteProvedor;
+import br.com.orquestrapay.payment.integration.ExcecaoIndisponibilidadeConfirmadaProvedor;
 import br.com.orquestrapay.payment.integration.ExcecaoRequisicaoProvedor;
+import br.com.orquestrapay.payment.integration.ExcecaoResultadoAmbiguoProvedor;
 import br.com.orquestrapay.payment.integration.LimitadorChamadasProvedor;
 import io.github.resilience4j.bulkhead.BulkheadConfig;
 import io.github.resilience4j.bulkhead.BulkheadRegistry;
@@ -75,6 +77,20 @@ public class ConfiguracaoProvedor {
                                 && status.value() != 429,
                         (requisicao, resposta) -> {
                             throw new ExcecaoRequisicaoProvedor(
+                                    resposta.getStatusCode().value());
+                        })
+                .defaultStatusHandler(
+                        status -> status.is5xxServerError()
+                                || status.value() == 408
+                                || status.value() == 429,
+                        (requisicao, resposta) -> {
+                            String resultado = resposta.getHeaders()
+                                    .getFirst("X-Orquestra-Resultado");
+                            if ("NAO_PROCESSADA".equalsIgnoreCase(resultado)) {
+                                throw new ExcecaoIndisponibilidadeConfirmadaProvedor(
+                                        resposta.getStatusCode().value());
+                            }
+                            throw new ExcecaoResultadoAmbiguoProvedor(
                                     resposta.getStatusCode().value());
                         })
                 .build();

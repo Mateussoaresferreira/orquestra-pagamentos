@@ -29,7 +29,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @WebMvcTest
-@Import({ConfiguracaoSeguranca.class, TesteAutorizacaoRotas.ControladorRotas.class})
+@Import({
+        ConfiguracaoSeguranca.class,
+        TesteAutorizacaoRotas.ControladorRotas.class,
+        TesteAutorizacaoRotas.ControladorInfraestrutura.class
+})
 @TestPropertySource(properties = {
         "orquestrapay.seguranca.habilitada=true",
         "orquestrapay.seguranca.emissor=https://identidade.exemplo",
@@ -95,6 +99,44 @@ class TesteAutorizacaoRotas {
                 .andExpect(status().isOk());
     }
 
+    @Test
+    void permiteAnonimamenteSomenteSaudeEPostDoWebhookDoProvedor() throws Exception {
+        http.perform(get("/actuator/health"))
+                .andExpect(status().isOk());
+
+        http.perform(post("/api/v1/webhooks/provedores"))
+                .andExpect(status().isOk());
+
+        http.perform(get("/api/v1/webhooks/provedores"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void protegeDocumentacaoERejeitaRotaNaoDeclaradaAteParaAdministrador() throws Exception {
+        http.perform(get("/swagger-ui/index.html"))
+                .andExpect(status().isUnauthorized());
+
+        http.perform(get("/swagger-ui/index.html")
+                        .with(token("ROLE_DESENVOLVEDOR")))
+                .andExpect(status().isOk());
+
+        http.perform(get("/api/v1/interno/diagnostico")
+                        .header("X-Empresa-Id", EMPRESA)
+                        .with(token("ROLE_ADMINISTRADOR")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void exigeAdministradorAutenticadoParaQuarentena() throws Exception {
+        http.perform(get("/api/v1/admin/quarentena"))
+                .andExpect(status().isUnauthorized());
+
+        http.perform(get("/api/v1/admin/quarentena")
+                        .header("X-Empresa-Id", EMPRESA)
+                        .with(token("ROLE_AUDITOR")))
+                .andExpect(status().isForbidden());
+    }
+
     private static org.springframework.test.web.servlet.request.RequestPostProcessor token(
             String autoridade) {
         return jwt()
@@ -137,6 +179,35 @@ class TesteAutorizacaoRotas {
 
         @GetMapping("/admin/quarentena")
         ResponseEntity<Void> consultarQuarentena() {
+            return ResponseEntity.ok().build();
+        }
+
+        @PostMapping("/webhooks/provedores")
+        ResponseEntity<Void> receberWebhookProvedor() {
+            return ResponseEntity.ok().build();
+        }
+
+        @GetMapping("/webhooks/provedores")
+        ResponseEntity<Void> consultarWebhookProvedor() {
+            return ResponseEntity.ok().build();
+        }
+
+        @GetMapping("/interno/diagnostico")
+        ResponseEntity<Void> diagnosticoInterno() {
+            return ResponseEntity.ok().build();
+        }
+    }
+
+    @RestController
+    static class ControladorInfraestrutura {
+
+        @GetMapping("/actuator/health")
+        ResponseEntity<Void> saude() {
+            return ResponseEntity.ok().build();
+        }
+
+        @GetMapping("/swagger-ui/index.html")
+        ResponseEntity<Void> documentacao() {
             return ResponseEntity.ok().build();
         }
     }

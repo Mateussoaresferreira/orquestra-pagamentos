@@ -1,8 +1,10 @@
 package br.com.orquestrapay.platform.event;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -146,6 +148,133 @@ class TesteIntegracaoRepositorioEventos {
                 agora.plusSeconds(2))).isFalse();
     }
 
+    @Test
+    void deveReprocessarQuarentenaComMotivoEHistoricoSemInverterAOrdem() {
+        Instant agora = Instant.now().plusSeconds(5);
+        UUID idEmpresa = UUID.randomUUID();
+        UUID idCompra = UUID.randomUUID();
+        UUID primeiroId = adicionarEvento(idEmpresa, idCompra, agora.minusSeconds(10));
+        UUID segundoId = adicionarEvento(idEmpresa, idCompra, agora.minusSeconds(9));
+        EventoPendente primeiro = colocarPrimeiroEventoEmQuarentena(agora, primeiroId);
+
+        assertThat(repositorio.listarQuarentena(idEmpresa, "ATIVA", 0, 20).itens())
+                .singleElement()
+                .satisfies(evento -> {
+                    assertThat(evento.idEvento()).isEqualTo(primeiroId);
+                    assertThat(evento.status()).isEqualTo("ATIVA");
+                    assertThat(evento.tentativas()).isEqualTo(1);
+                    assertThat(evento.ultimoErro()).isEqualTo("Kafka indisponivel no teste");
+                });
+        assertThat(repositorio.reivindicarPendentes(
+                10, 3, agora.plusSeconds(2), agora.plusSeconds(32))).isEmpty();
+
+        assertThat(repositorio.reprocessarQuarentena(
+                UUID.randomUUID(),
+                primeiroId,
+                "operador-invalido",
+                "Tentativa de outra empresa",
+                agora.plusSeconds(3))).isFalse();
+        assertThat(repositorio.reprocessarQuarentena(
+                idEmpresa,
+                primeiroId,
+                "operador@orquestrapay.local",
+                "Kafka normalizado; reprocessamento autorizado",
+                agora.plusSeconds(3))).isTrue();
+
+        List<EventoPendente> reprocessados = repositorio.reivindicarPendentes(
+                10, 3, agora.plusSeconds(4), agora.plusSeconds(34));
+        assertThat(reprocessados).extracting(EventoPendente::idEvento)
+                .containsExactly(primeiroId);
+        assertThat(reprocessados.getFirst().tentativas()).isZero();
+        assertThat(repositorio.marcarPublicados(reprocessados, agora.plusSeconds(5))).isEqualTo(1);
+        assertThat(repositorio.reivindicarPendentes(
+                10, 3, agora.plusSeconds(6), agora.plusSeconds(36)))
+                .extracting(EventoPendente::idEvento)
+                .containsExactly(segundoId);
+        assertThat(banco.sql("""
+                        SELECT acao, responsavel, motivo,
+                               tentativas_anteriores, erro_anterior
+                          FROM auditoria_quarentena
+                         WHERE id_evento = :idEvento
+                        """)
+                .param("idEvento", primeiro.idEvento())
+                .query((resultado, linha) -> List.of(
+                        resultado.getString("acao"),
+                        resultado.getString("responsavel"),
+                        resultado.getString("motivo"),
+                        Integer.toString(resultado.getInt("tentativas_anteriores")),
+                        resultado.getString("erro_anterior")))
+                .single())
+                .containsExactly(
+                        "REPROCESSAR",
+                        "operador@orquestrapay.local",
+                        "Kafka normalizado; reprocessamento autorizado",
+                        "1",
+                        "Kafka indisponivel no teste");
+        assertThat(repositorio.listarAuditoriaQuarentena(idEmpresa, primeiroId))
+                .singleElement()
+                .satisfies(auditoria -> {
+                    assertThat(auditoria.acao()).isEqualTo("REPROCESSAR");
+                    assertThat(auditoria.motivo())
+                            .isEqualTo("Kafka normalizado; reprocessamento autorizado");
+                    assertThat(auditoria.tentativasAnteriores()).isEqualTo(1);
+                });
+        assertThat(repositorio.listarAuditoriaQuarentena(UUID.randomUUID(), primeiroId))
+                .isEmpty();
+    }
+
+    @Test
+    void deveDescartarDefinitivamenteELiberarOProximoEventoDaCompra() {
+        Instant agora = Instant.now().plusSeconds(5);
+        UUID idEmpresa = UUID.randomUUID();
+        UUID idCompra = UUID.randomUUID();
+        UUID primeiroId = adicionarEvento(idEmpresa, idCompra, agora.minusSeconds(10));
+        UUID segundoId = adicionarEvento(idEmpresa, idCompra, agora.minusSeconds(9));
+        colocarPrimeiroEventoEmQuarentena(agora, primeiroId);
+
+        assertThat(repositorio.descartarQuarentenaDefinitivamente(
+                idEmpresa,
+                primeiroId,
+                "operador@orquestrapay.local",
+                "Evento invalido confirmado pelo responsavel do dominio",
+                agora.plusSeconds(3))).isTrue();
+        assertThat(repositorio.descartarQuarentenaDefinitivamente(
+                idEmpresa,
+                primeiroId,
+                "operador@orquestrapay.local",
+                "Repeticao da mesma decisao",
+                agora.plusSeconds(4))).isFalse();
+
+        assertThat(repositorio.listarQuarentena(idEmpresa, "ATIVA", 0, 20).itens())
+                .isEmpty();
+        assertThat(repositorio.listarQuarentena(idEmpresa, "RESOLVIDA", 0, 20).itens())
+                .singleElement()
+                .satisfies(evento -> {
+                    assertThat(evento.idEvento()).isEqualTo(primeiroId);
+                    assertThat(evento.status()).isEqualTo("RESOLVIDA");
+                    assertThat(evento.motivoResolucao())
+                            .isEqualTo("Evento invalido confirmado pelo responsavel do dominio");
+                    assertThat(evento.resolvidoEm())
+                            .isCloseTo(agora.plusSeconds(3), within(1, ChronoUnit.MICROS));
+                });
+        assertThat(repositorio.resumir().quarentena()).isZero();
+        assertThat(repositorio.reivindicarPendentes(
+                10, 3, agora.plusSeconds(5), agora.plusSeconds(35)))
+                .extracting(EventoPendente::idEvento)
+                .containsExactly(segundoId);
+        assertThat(banco.sql("""
+                        SELECT acao
+                          FROM auditoria_quarentena
+                         WHERE id_evento = :idEvento
+                        """)
+                .param("idEvento", primeiroId)
+                .query(String.class)
+                .single()).isEqualTo("DESCARTAR_DEFINITIVAMENTE");
+        assertThat(repositorio.listarAuditoriaQuarentena(idEmpresa, primeiroId))
+                .extracting(AuditoriaQuarentena::acao)
+                .containsExactly("DESCARTAR_DEFINITIVAMENTE");
+    }
+
     private void adicionarEventos(int quantidade, Instant ocorridoEm) {
         for (int indice = 0; indice < quantidade; indice++) {
             adicionarEvento(UUID.randomUUID(), ocorridoEm.plusMillis(indice));
@@ -153,18 +282,39 @@ class TesteIntegracaoRepositorioEventos {
     }
 
     private UUID adicionarEvento(UUID idCompra, Instant ocorridoEm) {
+        return adicionarEvento(UUID.randomUUID(), idCompra, ocorridoEm);
+    }
+
+    private UUID adicionarEvento(UUID idEmpresa, UUID idCompra, Instant ocorridoEm) {
         UUID idEvento = UUID.randomUUID();
         repositorio.adicionar(
                 idEvento,
                 "COMPRA_CRIADA",
                 1,
                 UUID.randomUUID(),
-                UUID.randomUUID(),
+                idEmpresa,
                 idCompra,
                 "teste",
                 "{}",
                 null,
                 ocorridoEm);
         return idEvento;
+    }
+
+    private EventoPendente colocarPrimeiroEventoEmQuarentena(
+            Instant agora,
+            UUID idEventoEsperado) {
+        List<EventoPendente> reivindicados = repositorio.reivindicarPendentes(
+                10, 3, agora.plusSeconds(1), agora.plusSeconds(31));
+        assertThat(reivindicados).extracting(EventoPendente::idEvento)
+                .containsExactly(idEventoEsperado);
+        EventoPendente evento = reivindicados.getFirst();
+        assertThat(repositorio.registrarFalha(
+                evento.idEvento(),
+                evento.tokenBloqueio(),
+                "Kafka indisponivel no teste",
+                agora.plusSeconds(2),
+                agora.plusSeconds(2))).isTrue();
+        return evento;
     }
 }

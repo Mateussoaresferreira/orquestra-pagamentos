@@ -117,6 +117,7 @@ auditoria própria.
 - o watchdog do checkout republica a etapa esperada de sagas inativas;
 - eventos que esgotam tentativas entram em quarentena auditável;
 - webhooks empresariais possuem lease, HMAC, backoff e falha definitiva;
+- emails usam SMTP real, lease e backoff; sucesso só é persistido após aceite do servidor;
 - a conciliação registra execuções, divergências e tratamento operacional;
 - métricas distinguem provedor escolhido, fallback, cota, saturação, PIX
   expirado e falhas de entrega.
@@ -134,6 +135,7 @@ auditoria própria.
 9. Chamadas externas nunca permanecem dentro da transação de banco.
 10. Callback PIX e webhook empresarial são autenticados e idempotentes.
 11. A soma das parcelas sempre coincide com o total contábil.
+12. O consumidor rejeita versões desconhecidas antes de iniciar a transação de domínio.
 
 ## Outbox e inbox
 
@@ -144,6 +146,11 @@ mais antigo de cada compra. O publicador mantém os eventos da mesma compra em
 sequência, processa compras diferentes em paralelo com concorrência limitada e
 confirma o lote enviado em uma única transação local. Isso preserva ordem sem
 criar uma transação JDBC por confirmação.
+
+A concorrência permanece explícita e limitada: o checkout publica até 50
+compras diferentes em paralelo e os demais domínios até 20. Esses valores podem
+ser alterados por ambiente no Compose ou no Helm, sem permitir que Virtual
+Threads transformem um backlog em conexões JDBC ou envios Kafka ilimitados.
 
 Uma queda entre envio ao Kafka e confirmação no PostgreSQL pode duplicar a
 mensagem, portanto a entrega continua sendo **pelo menos uma vez**.
@@ -159,6 +166,25 @@ pagamento, razão, notificação e checkout possuem tópicos próprios, além de
 DLT por domínio. Isso evita que cada consumidor leia e descarte eventos alheios,
 permite escalar cada atraso de forma independente e reduz rebalances sem relação
 com o serviço afetado.
+
+Cada consumidor declara explicitamente as versões que entende. Uma versão não
+suportada falha antes da inbox e do efeito de negócio, passa pelos retries do
+listener e termina na DLT do domínio. Isso impede que um payload novo seja
+interpretado silenciosamente por código antigo.
+
+## Notificações
+
+O evento final agenda email e webhook na mesma transação da inbox. O email é
+reivindicado em lote com `FOR UPDATE SKIP LOCKED`, incremento atômico da
+tentativa e token de lease. A conexão SMTP acontece fora da transação JDBC;
+somente o trabalhador que ainda possui o lease pode confirmar ou reagendar a
+linha. O `Message-ID` deriva do identificador persistido da notificação e
+permanece igual em todos os retries.
+
+Como não existe transação distribuída entre PostgreSQL e SMTP, a garantia é
+**pelo menos uma vez**. Uma queda depois do aceite remoto e antes da confirmação
+local pode duplicar a entrega, porém nunca permite marcar como enviada uma
+mensagem recusada pelo transporte.
 
 ## Retenção operacional
 

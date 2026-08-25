@@ -49,7 +49,39 @@ Exemplo para o banco do checkout:
 docker compose exec banco-checkout psql -U orquestrapay -d orquestrapay_checkout -c "select tipo, tentativas, proxima_tentativa_em, publicado_em, descartado_em from evento_saida order by ocorrido_em desc limit 20;"
 ```
 
-Use a mesma consulta nas portas/bancos dos outros serviços. Linhas com muitas tentativas ou em quarentena indicam falha que precisa de investigação antes de reprocessamento.
+Use a mesma consulta nas portas/bancos dos outros serviços. Linhas com muitas
+tentativas ou em quarentena indicam falha que precisa de investigação. Prefira a
+API administrativa para reprocessar ou descartar definitivamente, pois ela exige
+motivo, preserva o erro anterior, registra o responsável e mantém a ordem dos
+eventos da compra.
+
+Para provar que uma versão de contrato incompatível não produz efeito parcial e
+é encaminhada à DLT:
+
+```powershell
+.\scripts\testar-versao-evento-dlt.ps1
+```
+
+## Entrega de email
+
+O ambiente local usa Mailpit em `http://localhost:8025` e SMTP na porta `1025`.
+O trabalhador reivindica notificações com `SKIP LOCKED` e token de lease, envia
+fora da transação e só então registra `ENVIADA`. Falhas de transporte retornam a
+mensagem para `PENDENTE` com backoff exponencial e erro sanitizado.
+
+```powershell
+.\scripts\testar-envio-email-real.ps1
+```
+
+Esse ensaio cria uma compra real, confere destinatário, assunto, corpo,
+`Message-ID`, cabeçalhos de correlação e horário UTC. Depois interrompe o Mailpit,
+comprova que não houve falso positivo, restaura o SMTP e aguarda a recuperação.
+
+A garantia é de entrega **pelo menos uma vez**: se o SMTP aceitar a mensagem e a
+aplicação cair antes de confirmar o banco, pode ocorrer reenvio. O `Message-ID`
+estável por notificação permite deduplicação pelo provedor ou pelo destinatário.
+Em produção, configure `SMTP_*` para um serviço transacional com TLS,
+autenticação, reputação de domínio e monitoramento de rejeições.
 
 ## Retenção automática
 
@@ -78,6 +110,8 @@ do Kafka mais a janela máxima de replay. As métricas
 | PIX não conclui | callback do provedor, assinatura HMAC e expiração da cobrança |
 | Fallback não ocorre | use falha técnica; recusa do emissor não deve trocar provedor |
 | Webhook não chega | histórico de entregas, URL permitida e WireMock em `8092` |
+| Email não chega | fila `notificacao`, métrica `orquestrapay_notificacoes_smtp_total` e Mailpit em `8025` |
+| Evento vai para DLT | versão do contrato, erro da quarentena e compatibilidade do consumidor |
 | Saga sem avançar | histórico da compra e contador do watchdog |
 | Grafana vazio | targets do Prometheus, Alloy, Loki e coletor OpenTelemetry |
 | Docker Desktop responde 500 | reiniciar o motor e reduzir o conjunto com `-SemObservabilidade` |
