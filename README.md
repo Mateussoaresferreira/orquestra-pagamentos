@@ -1,13 +1,13 @@
 # Orquestra de Pagamentos
 
-[![CI](https://github.com/Mateusmith/orquestra-pagamentos/actions/workflows/integracao-continua.yml/badge.svg)](https://github.com/Mateusmith/orquestra-pagamentos/actions/workflows/integracao-continua.yml)
-[![Release 1.0.0](https://img.shields.io/badge/release-1.0.0-0A7D4F)](https://github.com/Mateusmith/orquestra-pagamentos/tree/v1.0.0)
+[![CI](https://github.com/Mateussoaresferreira/orquestra-pagamentos/actions/workflows/integracao-continua.yml/badge.svg)](https://github.com/Mateussoaresferreira/orquestra-pagamentos/actions/workflows/integracao-continua.yml)
+[![Release 1.0.0](https://img.shields.io/badge/release-1.0.0-0A7D4F)](https://github.com/Mateussoaresferreira/orquestra-pagamentos/tree/v1.0.0)
 [![Java 25](https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/25/)
 [![Spring Boot 4.1](https://img.shields.io/badge/Spring%20Boot-4.1.1-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
 [![Apache Kafka 4.1](https://img.shields.io/badge/Apache%20Kafka-4.1.2-231F20?logo=apachekafka&logoColor=white)](https://kafka.apache.org/)
 [![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
-[![Testes](https://img.shields.io/badge/testes-200%20aprovados-2EA44F)](docs/TESTES.md)
+[![Testes](https://img.shields.io/badge/testes-202%20aprovados-2EA44F)](docs/TESTES.md)
 [![License MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Orquestra de Pagamentos é um backend distribuído que processa uma compra do
@@ -374,7 +374,7 @@ para evitar cobrança inesperada.
 O núcleo da plataforma está concluído. As próximas versões podem aprofundar
 capacidades que dependem de operação prolongada ou infraestrutura externa:
 
-- [modelos de risco champion/challenger](https://github.com/Mateusmith/orquestra-pagamentos/issues/1);
-- [token vault e HSM/KMS gerenciado](https://github.com/Mateusmith/orquestra-pagamentos/issues/2);
-- [testes automatizados de caos e recuperação](https://github.com/Mateusmith/orquestra-pagamentos/issues/3);
-- [recuperação multi-região](https://github.com/Mateusmith/orquestra-pagamentos/issues/4).
+- [modelos de risco champion/challenger](https://github.com/Mateussoaresferreira/orquestra-pagamentos/issues/1);
+- [token vault e HSM/KMS gerenciado](https://github.com/Mateussoaresferreira/orquestra-pagamentos/issues/2);
+- [testes automatizados de caos e recuperação](https://github.com/Mateussoaresferreira/orquestra-pagamentos/issues/3);
+- [recuperação multi-região](https://github.com/Mateussoaresferreira/orquestra-pagamentos/issues/4).

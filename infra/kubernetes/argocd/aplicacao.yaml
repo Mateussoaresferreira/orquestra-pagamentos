@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/Mateusmith/orquestra-pagamentos.git
+    repoURL: https://github.com/Mateussoaresferreira/orquestra-pagamentos.git
     targetRevision: main
     path: infra/kubernetes/helm/orquestrapay
     helm:
