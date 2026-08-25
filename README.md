@@ -19,9 +19,11 @@ novamente.
 O projeto foi construído para demonstrar decisões encontradas em plataformas
 financeiras reais: consistência eventual, idempotência, compensação,
 concorrência, indisponibilidade de terceiros, isolamento entre empresas e
-rastreamento ponta a ponta. Os provedores são simulados de forma controlada;
-nenhum cartão real é armazenado e nenhuma transação financeira verdadeira é
-executada.
+rastreamento ponta a ponta. Os provedores são simulados de forma controlada e
+nenhum cartão real é armazenado. Por padrão, a chave PIX também é fictícia. Se
+uma chave real for configurada localmente, o QR Code poderá ser pagável, mas o
+simulador não consulta uma instituição financeira nem confirma a liquidação
+real.
 
 ## Visão rápida
 
@@ -33,6 +35,18 @@ executada.
 | Como falhas são tratadas? | Retry limitado, circuit breaker, fallback, quarentena e compensação |
 | Como os dados são separados? | Um PostgreSQL e uma credencial por serviço, com isolamento multiempresa |
 | Como executar? | Um comando PowerShell sobre Docker Compose |
+
+## O que é real e o que é simulado
+
+| Implementado e executado de verdade | Deliberadamente simulado |
+|---|---|
+| Microsserviços, Kafka, bancos isolados, Redis, outbox/inbox e saga | Adquirentes, banco liquidante e conexão com o SPI |
+| Idempotência, compensação, fallback, conciliação e partidas dobradas | Movimentação financeira e consulta de saldo bancário real |
+| BR Code EMV, CRC e PNG do QR Code decodificado nos testes | Confirmação do PIX pelo provedor de testes |
+| JWT, HMAC, criptografia, limites, métricas, logs e traces | Cognito, EKS, MSK e RDS enquanto a infraestrutura AWS não for provisionada |
+
+Essa separação permite testar os problemas difíceis de um sistema de pagamentos
+sem depender de credenciais bancárias ou gerar cobranças involuntárias.
 
 ## O que o sistema resolve
 
@@ -109,7 +123,7 @@ flowchart LR
 | Verificação | Resultado reproduzível |
 |---|---|
 | Testes Java | 204 testes JUnit/Testcontainers aprovados e regras JaCoCo atendidas |
-| Fluxo Postman | 6 execuções isoladas, 304 requisições e 324 asserções sem falha |
+| Fluxo Postman | Validação mais recente: 52 chamadas e 55 asserções; bateria paralela: 304 chamadas e 324 asserções, sem falhas |
 | Consistência | Estoque, risco, pagamento, razão, notificações e outboxes comparados entre serviços |
 | Interrupção sob carga | 319 compras aceitas, p95 de 315,68 ms, convergência em 87 s e nenhum efeito financeiro duplicado |
 | Tempo | Timestamps UTC validados entre resposta HTTP, persistência e ordem da saga |
@@ -246,9 +260,11 @@ token. A consulta do pagamento retorna `txid`, código copia e cola, QR Code e
 expiração enquanto o estado estiver `AGUARDANDO_CONFIRMACAO`; a saga prossegue
 somente após um callback assinado e idempotente do provedor.
 
-O ambiente usa uma chave PIX simulada por padrão. Uma chave real pode ser
-definida somente no `.env` local pela variável `PIX_CHAVE_RECEBEDOR`; nunca
-publique essa informação nem confirme pagamentos de teste por engano.
+> [!WARNING]
+> O ambiente usa uma chave PIX simulada por padrão. Uma chave real pode ser
+> definida somente no `.env` local pela variável `PIX_CHAVE_RECEBEDOR`. Nesse
+> caso, o QR poderá receber dinheiro, mas o sistema não verificará a liquidação
+> no banco. Nunca publique a chave nem confirme pagamentos de teste por engano.
 
 ## Acessos locais
 
@@ -272,11 +288,19 @@ Importe os dois arquivos:
 - `postman/orquestrapay-fluxo-completo.postman_collection.json`;
 - `postman/orquestrapay-ambiente-local.postman_environment.json`.
 
-A coleção possui 35 requisições organizadas em seis fluxos: preparação,
+A coleção possui 37 requisições organizadas em seis fluxos: preparação,
 cartão parcelado aprovado, falhas controladas, fallback entre provedores, PIX
 assíncrono e operação/auditoria. Ela também valida idempotência, partidas
 dobradas, recebíveis, webhooks, conciliação, quarentena, recusa sem cobrança e
 compensação com estorno e devolução do estoque.
+
+Na requisição `05 - PIX assíncrono > Aguardar cobrança PIX`, abra a aba
+`Visualize` depois da resposta final para conferir a imagem, o `txid` e o código
+Copia e Cola. A coleção valida automaticamente o início do payload, o CRC e a
+presença da imagem; os testes Java também decodificam o PNG e comparam o texto
+lido com o BR Code original. O total de chamadas de uma execução pode variar
+ligeiramente porque os fluxos assíncronos repetem consultas até atingirem o
+estado esperado.
 
 Para executar a mesma coleção automaticamente sem gravar a chave local do
 provedor no arquivo versionado:
