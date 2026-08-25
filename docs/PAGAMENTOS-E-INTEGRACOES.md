@@ -59,6 +59,12 @@ Para PIX, envie `metodoPagamento=PIX`, uma parcela e nenhum token de cartão. A
 criação da cobrança não conclui a compra: ela retorna os dados do QR Code e
 mantém o pagamento em `AGUARDANDO_CONFIRMACAO`.
 
+O simulador usa `pix@orquestrapay.local` por padrão. Para um ensaio estritamente
+local, `PIX_CHAVE_RECEBEDOR` permite trocar a chave sem gravá-la no código, na
+imagem Docker ou no histórico Git. Uma chave real torna o QR potencialmente
+pagável; mantenha o valor somente no `.env` ignorado pelo Git e não confirme a
+transação durante testes automatizados.
+
 O provedor confirma por `POST /api/v1/webhooks/provedores`, enviando:
 
 - `X-Provedor`;

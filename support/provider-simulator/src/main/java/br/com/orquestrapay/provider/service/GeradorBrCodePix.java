@@ -13,21 +13,32 @@ import com.google.zxing.WriterException;
 import com.google.zxing.client.j2se.MatrixToImageWriter;
 import com.google.zxing.qrcode.QRCodeWriter;
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
 public class GeradorBrCodePix {
 
-    private static final String CHAVE_PIX_SIMULADA = "pix@orquestrapay.local";
     private static final String NOME_RECEBEDOR = "ORQUESTRA PAY";
     private static final String CIDADE_RECEBEDOR = "SAO PAULO";
     private static final int TAMANHO_QR_CODE = 320;
+    private final String chavePixRecebedor;
+
+    public GeradorBrCodePix(
+            @Value("${provedor.simulacao.chave-pix:pix@orquestrapay.local}")
+            String chavePixRecebedor) {
+        if (chavePixRecebedor == null
+                || !chavePixRecebedor.matches("[A-Za-z0-9+@._-]{1,77}")) {
+            throw new IllegalArgumentException("A chave PIX configurada e invalida");
+        }
+        this.chavePixRecebedor = chavePixRecebedor;
+    }
 
     public CobrancaPix gerar(BigDecimal valor, String txid) {
         validar(valor, txid);
 
         String contaRecebedor = campo("00", "BR.GOV.BCB.PIX")
-                + campo("01", CHAVE_PIX_SIMULADA);
+                + campo("01", chavePixRecebedor);
         String dadosAdicionais = campo("05", txid);
         String semCrc = campo("00", "01")
                 + campo("01", "12")

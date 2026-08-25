@@ -277,6 +277,7 @@ services:
       MANAGEMENT_METRICS_TAGS_APPLICATION: simulador-provedor
       PROVEDOR_CHAVE_API: ${PROVEDOR_CHAVE_API:?Execute scripts/iniciar.ps1 para gerar os segredos locais}
       PROVEDOR_SEGREDO_WEBHOOK: ${PROVEDOR_CHAVE_API:?Execute scripts/iniciar.ps1 para gerar os segredos locais}
+      PIX_CHAVE_RECEBEDOR: ${PIX_CHAVE_RECEBEDOR:-pix@orquestrapay.local}
       PROVEDOR_NOME: principal
     ports: ["127.0.0.1:8090:8080"]
 
@@ -298,6 +299,7 @@ services:
       MANAGEMENT_METRICS_TAGS_APPLICATION: simulador-provedor-contingencia
       PROVEDOR_CHAVE_API: ${PROVEDOR_CHAVE_API:?Execute scripts/iniciar.ps1 para gerar os segredos locais}
       PROVEDOR_SEGREDO_WEBHOOK: ${PROVEDOR_CHAVE_API:?Execute scripts/iniciar.ps1 para gerar os segredos locais}
+      PIX_CHAVE_RECEBEDOR: ${PIX_CHAVE_RECEBEDOR:-pix@orquestrapay.local}
       PROVEDOR_NOME: contingencia
     ports: ["127.0.0.1:8091:8080"]
 

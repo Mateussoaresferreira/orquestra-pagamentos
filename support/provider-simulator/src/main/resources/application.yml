@@ -16,6 +16,7 @@ provedor:
     chave-api: ${PROVEDOR_CHAVE_API}
   simulacao:
     nome: ${PROVEDOR_NOME:principal}
+    chave-pix: ${PIX_CHAVE_RECEBEDOR:pix@orquestrapay.local}
     segredo-webhook: ${PROVEDOR_SEGREDO_WEBHOOK:${PROVEDOR_CHAVE_API}}
     hosts-notificacao-permitidos: ${PROVEDOR_HOSTS_NOTIFICACAO:localhost,servico-pagamento}
 management:

@@ -7,7 +7,7 @@
 [![Apache Kafka 4.1](https://img.shields.io/badge/Apache%20Kafka-4.1.2-231F20?logo=apachekafka&logoColor=white)](https://kafka.apache.org/)
 [![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
-[![Testes](https://img.shields.io/badge/testes-202%20aprovados-2EA44F)](docs/TESTES.md)
+[![Testes](https://img.shields.io/badge/testes-204%20aprovados-2EA44F)](docs/TESTES.md)
 [![License MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Orquestra de Pagamentos é um backend distribuído que processa uma compra do
@@ -108,7 +108,7 @@ flowchart LR
 
 | Verificação | Resultado reproduzível |
 |---|---|
-| Testes Java | 202 testes JUnit/Testcontainers aprovados e regras JaCoCo atendidas |
+| Testes Java | 204 testes JUnit/Testcontainers aprovados e regras JaCoCo atendidas |
 | Fluxo Postman | 6 execuções isoladas, 304 requisições e 324 asserções sem falha |
 | Consistência | Estoque, risco, pagamento, razão, notificações e outboxes comparados entre serviços |
 | Interrupção sob carga | 319 compras aceitas, p95 de 315,68 ms, convergência em 87 s e nenhum efeito financeiro duplicado |
@@ -245,6 +245,10 @@ Para PIX, envie `"metodoPagamento": "PIX"`, `"parcelas": 1` e omita o
 token. A consulta do pagamento retorna `txid`, código copia e cola, QR Code e
 expiração enquanto o estado estiver `AGUARDANDO_CONFIRMACAO`; a saga prossegue
 somente após um callback assinado e idempotente do provedor.
+
+O ambiente usa uma chave PIX simulada por padrão. Uma chave real pode ser
+definida somente no `.env` local pela variável `PIX_CHAVE_RECEBEDOR`; nunca
+publique essa informação nem confirme pagamentos de teste por engano.
 
 ## Acessos locais
 

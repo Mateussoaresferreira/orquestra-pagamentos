@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test;
 
 class TesteGeradorBrCodePix {
 
-    private final GeradorBrCodePix gerador = new GeradorBrCodePix();
+    private final GeradorBrCodePix gerador = new GeradorBrCodePix("pix@orquestrapay.local");
 
     @Test
     void deveGerarBrCodeComCamposEmvCrcValidoEImagemDecodificavel() throws Exception {
@@ -61,6 +61,26 @@ class TesteGeradorBrCodePix {
                 "txid-com-mais-de-vinte-e-cinco-caracteres"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("1 a 25");
+    }
+
+    @Test
+    void deveUsarChavePixConfiguradaSemFixaLaNoCodigo() {
+        var geradorComCpfSimulado = new GeradorBrCodePix("12345678909");
+
+        var cobranca = geradorComCpfSimulado.gerar(
+                new BigDecimal("25.00"),
+                "pedido123");
+
+        assertThat(separarCampos(cobranca.copiaCola()).get("26"))
+                .contains("0014BR.GOV.BCB.PIX")
+                .contains("011112345678909");
+    }
+
+    @Test
+    void deveRejeitarChavePixComCaracteresInvalidos() {
+        assertThatThrownBy(() -> new GeradorBrCodePix("cpf com espacos"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("chave PIX");
     }
 
     private Map<String, String> separarCampos(String payload) {

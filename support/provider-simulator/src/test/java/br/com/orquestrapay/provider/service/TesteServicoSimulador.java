@@ -22,7 +22,7 @@ class TesteServicoSimulador {
                     Set.of("localhost")),
             RestClient.create(),
             new ObjectMapper(),
-            new GeradorBrCodePix());
+            new GeradorBrCodePix("pix@orquestrapay.local"));
 
     @Test
     void deveAutorizarPagamentoERepetirAMesmaResposta() {
