@@ -7,6 +7,7 @@ import static br.com.orquestrapay.contracts.TiposEventos.LANCAMENTOS_RECUSADOS;
 import static br.com.orquestrapay.contracts.TiposEventos.LANCAMENTOS_REGISTRADOS;
 import static br.com.orquestrapay.contracts.TiposEventos.PAGAMENTO_AUTORIZADO;
 import static br.com.orquestrapay.contracts.TiposEventos.PAGAMENTO_ESTORNADO;
+import static br.com.orquestrapay.contracts.TiposEventos.PAGAMENTO_PENDENTE;
 import static br.com.orquestrapay.contracts.TiposEventos.PAGAMENTO_RECUSADO;
 import static br.com.orquestrapay.contracts.TiposEventos.RISCO_APROVADO;
 import static br.com.orquestrapay.contracts.TiposEventos.RISCO_REPROVADO;
@@ -27,6 +28,7 @@ public class ConsumidorSaga {
             RISCO_APROVADO,
             RISCO_REPROVADO,
             PAGAMENTO_AUTORIZADO,
+            PAGAMENTO_PENDENTE,
             PAGAMENTO_RECUSADO,
             LANCAMENTOS_REGISTRADOS,
             LANCAMENTOS_RECUSADOS,
@@ -39,7 +41,7 @@ public class ConsumidorSaga {
         this.checkout = checkout;
     }
 
-    @KafkaListener(topics = "${orquestrapay.eventos.topico}")
+    @KafkaListener(topics = "${orquestrapay.eventos.topicos.checkout}")
     public void receber(EventoSaga evento) {
         if (EVENTOS_TRATADOS.contains(evento.getTipo())) {
             checkout.tratar(evento);

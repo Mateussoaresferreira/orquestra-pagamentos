@@ -50,10 +50,14 @@ public class ConfiguracaoSeguranca {
             throw new IllegalStateException(
                     "O emissor OIDC e obrigatorio quando a seguranca esta habilitada");
         }
+        if (propriedades.clientesId().isEmpty()) {
+            throw new IllegalStateException(
+                    "Ao menos um cliente OIDC confiavel e obrigatorio quando a seguranca esta habilitada");
+        }
         var decodificador = NimbusJwtDecoder.withIssuerLocation(propriedades.emissor()).build();
         var validadores = new DelegatingOAuth2TokenValidator<Jwt>(
                 JwtValidators.createDefaultWithIssuer(propriedades.emissor()),
-                new ValidadorTokenAcesso(propriedades.clienteId()));
+                new ValidadorTokenAcesso(propriedades.clientesId()));
         decodificador.setJwtValidator(validadores);
         return decodificador;
     }
@@ -93,25 +97,94 @@ public class ConfiguracaoSeguranca {
                         .requestMatchers("/actuator/**")
                         .hasAuthority("ROLE_OBSERVABILIDADE")
                         .requestMatchers(HttpMethod.POST, "/api/v1/compras")
-                        .hasAuthority("SCOPE_compras:escrever")
+                        .hasAnyAuthority(
+                                "SCOPE_compras:escrever", "ROLE_OPERADOR", "ROLE_ADMINISTRADOR")
                         .requestMatchers(HttpMethod.GET, "/api/v1/compras/**")
-                        .hasAuthority("SCOPE_compras:ler")
+                        .hasAnyAuthority(
+                                "SCOPE_compras:ler",
+                                "ROLE_OPERADOR",
+                                "ROLE_AUDITOR",
+                                "ROLE_ADMINISTRADOR")
                         .requestMatchers(HttpMethod.PUT, "/api/v1/estoques/**")
-                        .hasAnyAuthority("SCOPE_estoque:escrever", "ROLE_OPERADOR")
+                        .hasAnyAuthority(
+                                "SCOPE_estoque:escrever", "ROLE_OPERADOR", "ROLE_ADMINISTRADOR")
                         .requestMatchers(HttpMethod.GET, "/api/v1/estoques/**")
-                        .hasAnyAuthority("SCOPE_estoque:ler", "ROLE_OPERADOR", "ROLE_AUDITOR")
+                        .hasAnyAuthority(
+                                "SCOPE_estoque:ler",
+                                "ROLE_OPERADOR",
+                                "ROLE_AUDITOR",
+                                "ROLE_ADMINISTRADOR")
                         .requestMatchers(HttpMethod.GET, "/api/v1/analises-risco/**")
-                        .hasAnyAuthority("SCOPE_risco:ler", "ROLE_ANALISTA_RISCO", "ROLE_AUDITOR")
+                        .hasAnyAuthority(
+                                "SCOPE_risco:ler",
+                                "ROLE_ANALISTA_RISCO",
+                                "ROLE_AUDITOR",
+                                "ROLE_ADMINISTRADOR")
                         .requestMatchers(HttpMethod.GET, "/api/v1/pagamentos/**")
-                        .hasAnyAuthority("SCOPE_pagamentos:ler", "ROLE_FINANCEIRO", "ROLE_AUDITOR")
+                        .hasAnyAuthority(
+                                "SCOPE_pagamentos:ler",
+                                "ROLE_FINANCEIRO",
+                                "ROLE_AUDITOR",
+                                "ROLE_ADMINISTRADOR")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/webhooks/provedores")
+                        .permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/webhooks/configuracao")
+                        .hasAnyAuthority(
+                                "SCOPE_webhooks:ler",
+                                "ROLE_OPERADOR",
+                                "ROLE_AUDITOR",
+                                "ROLE_ADMINISTRADOR")
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/webhooks/configuracao")
+                        .hasAnyAuthority("SCOPE_webhooks:gerenciar", "ROLE_ADMINISTRADOR")
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/webhooks/configuracao")
+                        .hasAnyAuthority("SCOPE_webhooks:gerenciar", "ROLE_ADMINISTRADOR")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/webhooks/entregas/**")
+                        .hasAnyAuthority(
+                                "SCOPE_webhooks:ler",
+                                "ROLE_OPERADOR",
+                                "ROLE_AUDITOR",
+                                "ROLE_ADMINISTRADOR")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/webhooks/entregas/*/reprocessar")
+                        .hasAnyAuthority(
+                                "SCOPE_webhooks:gerenciar",
+                                "ROLE_OPERADOR",
+                                "ROLE_ADMINISTRADOR")
                         .requestMatchers(HttpMethod.POST, "/api/v1/conciliacoes")
-                        .hasAnyAuthority("SCOPE_pagamentos:conciliar", "ROLE_FINANCEIRO")
+                        .hasAnyAuthority(
+                                "SCOPE_pagamentos:conciliar",
+                                "ROLE_FINANCEIRO",
+                                "ROLE_ADMINISTRADOR")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/conciliacoes/**")
+                        .hasAnyAuthority(
+                                "SCOPE_pagamentos:ler",
+                                "ROLE_FINANCEIRO",
+                                "ROLE_AUDITOR",
+                                "ROLE_ADMINISTRADOR")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/conciliacoes/divergencias/*")
+                        .hasAnyAuthority(
+                                "SCOPE_pagamentos:conciliar",
+                                "ROLE_FINANCEIRO",
+                                "ROLE_ADMINISTRADOR")
+                        .requestMatchers("/api/v1/admin/quarentena/**")
+                        .hasAuthority("ROLE_ADMINISTRADOR")
                         .requestMatchers(HttpMethod.GET, "/api/v1/transacoes-contabeis/**")
-                        .hasAnyAuthority("SCOPE_razao:ler", "ROLE_FINANCEIRO", "ROLE_AUDITOR")
+                        .hasAnyAuthority(
+                                "SCOPE_razao:ler",
+                                "ROLE_FINANCEIRO",
+                                "ROLE_AUDITOR",
+                                "ROLE_ADMINISTRADOR")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/transacoes-contabeis/**")
+                        .hasAnyAuthority(
+                                "SCOPE_razao:escrever", "ROLE_FINANCEIRO", "ROLE_ADMINISTRADOR")
                         .requestMatchers(HttpMethod.GET, "/api/v1/notificacoes/**")
-                        .hasAnyAuthority("SCOPE_notificacoes:ler", "ROLE_OPERADOR", "ROLE_AUDITOR")
+                        .hasAnyAuthority(
+                                "SCOPE_notificacoes:ler",
+                                "ROLE_OPERADOR",
+                                "ROLE_AUDITOR",
+                                "ROLE_ADMINISTRADOR")
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
-                        .hasAnyAuthority("ROLE_DESENVOLVEDOR", "ROLE_AUDITOR")
+                        .hasAnyAuthority(
+                                "ROLE_DESENVOLVEDOR", "ROLE_AUDITOR", "ROLE_ADMINISTRADOR")
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(configuracao -> configuracao
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(conversor)))

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -18,12 +19,16 @@ import tools.jackson.databind.ObjectMapper;
 
 class TesteFiltroEmpresaAutenticada {
 
+    private static final String EMPRESA_MAQUINA = "65eeb170-5998-4c5d-9ee3-7588f6cceaa5";
+
     private final PropriedadesSeguranca propriedades = new PropriedadesSeguranca(
             true,
             "custom:empresa_id",
             "cognito:groups",
             "https://emissor.exemplo",
-            "cliente-api");
+            Set.of("cliente-api", "cliente-maquina"),
+            "cliente-maquina",
+            EMPRESA_MAQUINA);
     private final FiltroEmpresaAutenticada filtro = new FiltroEmpresaAutenticada(
             propriedades,
             new ObjectMapper());
@@ -79,6 +84,34 @@ class TesteFiltroEmpresaAutenticada {
     }
 
     @Test
+    void deveVincularClienteMaquinaSomenteAEmpresaConfigurada() throws Exception {
+        autenticar(null, "cliente-maquina");
+        var requisicao = new MockHttpServletRequest("POST", "/api/v1/compras");
+        requisicao.addHeader("X-Empresa-Id", EMPRESA_MAQUINA);
+        var resposta = new MockHttpServletResponse();
+        var controladorChamado = new AtomicBoolean();
+
+        filtro.doFilter(requisicao, resposta, (entrada, saida) -> controladorChamado.set(true));
+
+        assertThat(resposta.getStatus()).isEqualTo(200);
+        assertThat(controladorChamado).isTrue();
+    }
+
+    @Test
+    void deveIgnorarClaimDeEmpresaForjadoPeloClienteMaquina() throws Exception {
+        autenticar(UUID.randomUUID().toString(), "cliente-maquina");
+        var requisicao = new MockHttpServletRequest("POST", "/api/v1/compras");
+        requisicao.addHeader("X-Empresa-Id", UUID.randomUUID().toString());
+        var resposta = new MockHttpServletResponse();
+
+        filtro.doFilter(requisicao, resposta, (entrada, saida) -> {
+            throw new AssertionError("O controlador nao poderia ser chamado");
+        });
+
+        assertThat(resposta.getStatus()).isEqualTo(403);
+    }
+
+    @Test
     void deveExigirCabecalhoDeEmpresaEmEndpointMultiempresa() throws Exception {
         autenticar(UUID.randomUUID().toString());
         var requisicao = new MockHttpServletRequest("GET", "/api/v1/compras/qualquer");
@@ -106,11 +139,16 @@ class TesteFiltroEmpresaAutenticada {
     }
 
     private void autenticar(String idEmpresa) {
+        autenticar(idEmpresa, "cliente-api");
+    }
+
+    private void autenticar(String idEmpresa, String clienteId) {
         var construtor = Jwt.withTokenValue("token-teste")
                 .header("alg", "RS256")
                 .subject("usuario-teste")
                 .issuedAt(Instant.now())
-                .expiresAt(Instant.now().plusSeconds(300));
+                .expiresAt(Instant.now().plusSeconds(300))
+                .claim("client_id", clienteId);
         if (idEmpresa != null) {
             construtor.claim(propriedades.claimEmpresa(), idEmpresa);
         }

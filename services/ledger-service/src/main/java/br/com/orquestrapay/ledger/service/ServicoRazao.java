@@ -4,6 +4,7 @@ import static br.com.orquestrapay.contracts.TiposEventos.LANCAMENTOS_RECUSADOS;
 import static br.com.orquestrapay.contracts.TiposEventos.LANCAMENTOS_REGISTRADOS;
 
 import java.time.Clock;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 import br.com.orquestrapay.contracts.EventoSaga;
@@ -12,6 +13,7 @@ import br.com.orquestrapay.contracts.SolicitacaoLancamentos;
 import br.com.orquestrapay.ledger.api.RespostaTransacaoContabil;
 import br.com.orquestrapay.ledger.data.RepositorioRazao;
 import br.com.orquestrapay.ledger.domain.NaturezaLancamento;
+import br.com.orquestrapay.ledger.domain.CalculadoraParcelas;
 import br.com.orquestrapay.platform.event.RegistroEventos;
 import br.com.orquestrapay.platform.event.RegistroMensagens;
 import br.com.orquestrapay.platform.web.ExcecaoNegocio;
@@ -76,6 +78,17 @@ public class ServicoRazao {
         repositorio.abrir(
                 idTransacao, idEmpresa, idCompra, solicitacao.idPagamento(),
                 solicitacao.valorTotal(), solicitacao.moeda(), agora);
+        CalculadoraParcelas.calcular(
+                        solicitacao.valorTotal(),
+                        solicitacao.parcelas(),
+                        agora.atZone(ZoneOffset.UTC).toLocalDate())
+                .forEach(parcela -> repositorio.agendarParcela(
+                        idTransacao,
+                        parcela.numero(),
+                        parcela.totalParcelas(),
+                        parcela.valor(),
+                        parcela.vencimento(),
+                        agora));
         repositorio.lancar(
                 idTransacao,
                 "VALORES_A_RECEBER_DO_PROVEDOR",

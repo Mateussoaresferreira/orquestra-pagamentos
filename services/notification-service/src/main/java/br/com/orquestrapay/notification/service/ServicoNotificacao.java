@@ -23,16 +23,19 @@ public class ServicoNotificacao {
     private final RegistroMensagens mensagens;
     private final ObjectMapper json;
     private final Clock relogio;
+    private final ServicoWebhooksEmpresa webhooks;
 
     public ServicoNotificacao(
             RepositorioNotificacoes repositorio,
             RegistroMensagens mensagens,
             ObjectMapper json,
-            Clock relogio) {
+            Clock relogio,
+            ServicoWebhooksEmpresa webhooks) {
         this.repositorio = repositorio;
         this.mensagens = mensagens;
         this.json = json;
         this.relogio = relogio;
+        this.webhooks = webhooks;
     }
 
     @Transactional
@@ -56,6 +59,7 @@ public class ServicoNotificacao {
                 assunto,
                 finalizacao.motivo(),
                 relogio.instant());
+        webhooks.agendar(evento, finalizacao);
     }
 
     @Transactional(readOnly = true)

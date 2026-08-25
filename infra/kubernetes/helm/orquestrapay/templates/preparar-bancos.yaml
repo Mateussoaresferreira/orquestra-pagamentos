@@ -26,7 +26,7 @@ spec:
           image: postgres:17-alpine
           env:
             - name: PGHOST
-              value: {{ .Values.global.banco.host | quote }}
+              value: {{ .Values.global.banco.hostAdministrativo | quote }}
             - name: PGPORT
               value: {{ .Values.global.banco.porta | quote }}
             - name: PGUSER
@@ -40,7 +40,7 @@ spec:
                   name: {{ .Values.global.banco.segredo }}
                   key: {{ .Values.global.banco.chaveSenhaMestre }}
             {{- range .Values.servicos }}
-            {{- if .usaBanco }}
+            {{- if and .habilitado .usaBanco }}
             - name: BANCO_{{ .chave | upper }}_SENHA
               valueFrom:
                 secretKeyRef:

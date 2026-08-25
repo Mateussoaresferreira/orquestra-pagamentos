@@ -37,11 +37,28 @@ orquestrapay:
   seguranca:
     habilitada: ${SEGURANCA_HABILITADA:true}
     emissor: ${OIDC_EMISSOR:}
-    cliente-id: ${OIDC_CLIENTE_ID:}
+    clientes-id: ${OIDC_CLIENTES_ID:${OIDC_CLIENTE_ID:}}
+    cliente-maquina-id: ${OIDC_CLIENTE_MAQUINA_ID:}
+    empresa-cliente-maquina: ${OIDC_EMPRESA_CLIENTE_MAQUINA:}
   eventos:
     habilitado: true
-    topico: ${TOPICO_SAGA:orquestrapay.saga.v1}
+    topicos:
+      checkout: ${TOPICO_CHECKOUT:orquestrapay.checkout.v1}
+      estoque: ${TOPICO_ESTOQUE:orquestrapay.estoque.v1}
+      risco: ${TOPICO_RISCO:orquestrapay.risco.v1}
+      pagamento: ${TOPICO_PAGAMENTO:orquestrapay.pagamento.v1}
+      razao: ${TOPICO_RAZAO:orquestrapay.razao.v1}
+      notificacao: ${TOPICO_NOTIFICACAO:orquestrapay.notificacao.v1}
+    particoes: ${TOPICOS_PARTICOES:12}
     intervalo-publicacao: 300
+  retencao-eventos:
+    habilitada: ${RETENCAO_EVENTOS_HABILITADA:true}
+    tamanho-lote: ${RETENCAO_EVENTOS_TAMANHO_LOTE:1000}
+    processados: ${RETENCAO_EVENTOS_PROCESSADOS:90d}
+    publicados: ${RETENCAO_EVENTOS_PUBLICADOS:7d}
+    quarentena: ${RETENCAO_EVENTOS_QUARENTENA:365d}
+    intervalo: ${RETENCAO_EVENTOS_INTERVALO:1h}
+    atraso-inicial: ${RETENCAO_EVENTOS_ATRASO_INICIAL:5m}
   risco:
     politica:
       limite-valor-alto: ${RISCO_LIMITE_VALOR_ALTO:1000.00}

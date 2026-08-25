@@ -1,0 +1,9 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/orquestrapay"
+  },
+  "response": {
+    "status": 204
+  }
+}

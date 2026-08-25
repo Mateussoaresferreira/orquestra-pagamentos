@@ -2,15 +2,25 @@ global:
   ambiente: producao
   imagens:
     registro: 000000000000.dkr.ecr.us-east-1.amazonaws.com
-    tag: "0.1.0"
+    tag: "1.0.0"
     politicaPull: IfNotPresent
   seguranca:
     habilitada: true
     emissor: https://cognito-idp.us-east-1.amazonaws.com/us-east-1_EXEMPLO
-    clienteId: cliente-exemplo
+    clientesId: cliente-web-exemplo,cliente-maquina-exemplo
+    clienteMaquinaId: cliente-maquina-exemplo
+    empresaClienteMaquina: 65eeb170-5998-4c5d-9ee3-7588f6cceaa5
   kafka:
     servidores: b-1.exemplo.kafka.us-east-1.amazonaws.com:9098
-    topico: orquestrapay.saga.v1
+    regiaoAws: us-east-1
+    topicos:
+      checkout: orquestrapay.checkout.v1
+      estoque: orquestrapay.estoque.v1
+      risco: orquestrapay.risco.v1
+      pagamento: orquestrapay.pagamento.v1
+      razao: orquestrapay.razao.v1
+      notificacao: orquestrapay.notificacao.v1
+    particoes: 12
     autenticacaoIam: true
   registroEsquemas:
     url: http://registro-esquemas:8080/apis/registry/v3
@@ -19,13 +29,39 @@ global:
     bancoSenhaChave: banco-registro-senha
   banco:
     host: banco.exemplo.us-east-1.rds.amazonaws.com
+    hostAdministrativo: banco-direto.exemplo.us-east-1.rds.amazonaws.com
     porta: 5432
     segredo: orquestrapay-segredos
     chaveUsuarioMestre: banco-usuario-mestre
     chaveSenhaMestre: banco-senha-mestre
+    pool:
+      maximo: 8
+      minimo: 2
+      tempoLimiteConexaoMs: 3000
   redis:
     host: redis.exemplo.cache.amazonaws.com
     porta: 6379
+  admissao:
+    maximoPorEmpresa: 60
+    janelaPorEmpresa: 1m
+    maximoGlobal: 300
+    janelaGlobal: 1s
+    maximoEmProcessamento: 16
+  retencao:
+    eventos:
+      habilitada: true
+      tamanhoLote: 1000
+      processados: 90d
+      publicados: 7d
+      quarentena: 365d
+      intervalo: 1h
+      atrasoInicial: 5m
+    checkout:
+      habilitada: true
+      tamanhoLote: 1000
+      chavesIdempotencia: 90d
+      intervalo: 1h
+      atrasoInicial: 10m
   observabilidade:
     otlp: http://coletor-opentelemetry.observabilidade:4318
     amostragem: "0.10"
@@ -38,30 +74,49 @@ global:
 
 segredos:
   criar: false
-  bancoUsuarioMestre: altere-me
-  bancoSenhaMestre: altere-me
-  bancoCheckoutSenha: altere-me
-  bancoEstoqueSenha: altere-me
-  bancoRiscoSenha: altere-me
-  bancoPagamentoSenha: altere-me
-  bancoRazaoSenha: altere-me
-  bancoNotificacaoSenha: altere-me
-  bancoRegistroSenha: altere-me
-  redisSenha: altere-me-com-ao-menos-16-caracteres
-  chaveCriptografiaToken: altere-me
-  chaveApiProvedor: altere-me-com-ao-menos-24-caracteres
+  bancoUsuarioMestre: ""
+  bancoSenhaMestre: ""
+  bancoCheckoutSenha: ""
+  bancoEstoqueSenha: ""
+  bancoRiscoSenha: ""
+  bancoPagamentoSenha: ""
+  bancoRazaoSenha: ""
+  bancoNotificacaoSenha: ""
+  bancoRegistroSenha: ""
+  redisSenha: ""
+  chaveCriptografiaToken: ""
+  chaveApiProvedor: ""
+  chaveApiProvedorPrincipal: ""
+  segredoWebhookProvedorPrincipal: ""
+  chaveApiProvedorContingencia: ""
+  segredoWebhookProvedorContingencia: ""
   externos:
     habilitado: true
     regiao: us-east-1
     bancoArn: arn:aws:secretsmanager:us-east-1:000000000000:secret:rds-exemplo
     aplicacaoArn: arn:aws:secretsmanager:us-east-1:000000000000:secret:orquestrapay-exemplo
+    bancos:
+      checkoutArn: arn:aws:secretsmanager:us-east-1:000000000000:secret:orquestrapay-exemplo-checkout
+      estoqueArn: arn:aws:secretsmanager:us-east-1:000000000000:secret:orquestrapay-exemplo-estoque
+      riscoArn: arn:aws:secretsmanager:us-east-1:000000000000:secret:orquestrapay-exemplo-risco
+      pagamentoArn: arn:aws:secretsmanager:us-east-1:000000000000:secret:orquestrapay-exemplo-pagamento
+      razaoArn: arn:aws:secretsmanager:us-east-1:000000000000:secret:orquestrapay-exemplo-razao
+      notificacaoArn: arn:aws:secretsmanager:us-east-1:000000000000:secret:orquestrapay-exemplo-notificacao
+      registroArn: arn:aws:secretsmanager:us-east-1:000000000000:secret:orquestrapay-exemplo-registro
 
 ingresso:
   habilitado: false
   classe: alb
   host: api.orquestrapay.exemplo.com
   certificadoArn: ""
+  wafAclArn: ""
   politicaTls: ELBSecurityPolicy-TLS13-1-2-2021-06
+
+integracoes:
+  pagamentos:
+    principalUrl: https://pagamentos-principal.exemplo.com
+    contingenciaUrl: https://pagamentos-contingencia.exemplo.com
+    pixUrlNotificacao: https://api.orquestrapay.exemplo.com/api/v1/webhooks/provedores
 
 politicaRisco:
   limiteValorAlto: "1000.00"
@@ -80,6 +135,7 @@ politicaRisco:
 
 servicos:
   - chave: checkout
+    habilitado: true
     nome: servico-checkout
     imagem: servico-checkout
     banco: orquestrapay_checkout
@@ -88,6 +144,10 @@ servicos:
     replicas: 2
     usaBanco: true
     usaKafka: true
+    concorrenciaKafka: 4
+    concorrenciaOutbox: 4
+    grupoKafka: checkout-orquestrador-v1
+    limiteLagKafka: 100
     usaSeguranca: true
     usaRedis: true
     usaCriptografia: true
@@ -95,6 +155,7 @@ servicos:
       requisicoes: { cpu: 250m, memoria: 512Mi }
       limites: { cpu: "1", memoria: 768Mi }
   - chave: estoque
+    habilitado: true
     nome: servico-estoque
     imagem: servico-estoque
     banco: orquestrapay_estoque
@@ -103,11 +164,16 @@ servicos:
     replicas: 2
     usaBanco: true
     usaKafka: true
+    concorrenciaKafka: 1
+    concorrenciaOutbox: 4
+    grupoKafka: estoque-v1
+    limiteLagKafka: 50
     usaSeguranca: true
     recursos:
       requisicoes: { cpu: 200m, memoria: 384Mi }
       limites: { cpu: "1", memoria: 640Mi }
   - chave: risco
+    habilitado: true
     nome: servico-risco
     imagem: servico-risco
     banco: orquestrapay_risco
@@ -116,12 +182,17 @@ servicos:
     replicas: 2
     usaBanco: true
     usaKafka: true
+    concorrenciaKafka: 1
+    concorrenciaOutbox: 4
+    grupoKafka: risco-v1
+    limiteLagKafka: 50
     usaSeguranca: true
     usaPoliticaRisco: true
     recursos:
       requisicoes: { cpu: 200m, memoria: 384Mi }
       limites: { cpu: "1", memoria: 640Mi }
   - chave: pagamento
+    habilitado: true
     nome: servico-pagamento
     imagem: servico-pagamento
     banco: orquestrapay_pagamento
@@ -130,15 +201,20 @@ servicos:
     replicas: 2
     usaBanco: true
     usaKafka: true
+    concorrenciaKafka: 1
+    concorrenciaOutbox: 4
+    grupoKafka: pagamento-v1
+    limiteLagKafka: 25
     usaSeguranca: true
+    usaRedis: true
     usaCriptografia: true
     usaChaveProvedor: true
-    ambiente:
-      PROVEDOR_URL: http://simulador-provedor:8080
+    usaIntegracaoPagamentos: true
     recursos:
       requisicoes: { cpu: 250m, memoria: 512Mi }
       limites: { cpu: "1", memoria: 768Mi }
   - chave: razao
+    habilitado: true
     nome: servico-razao
     imagem: servico-razao
     banco: orquestrapay_razao
@@ -147,11 +223,16 @@ servicos:
     replicas: 2
     usaBanco: true
     usaKafka: true
+    concorrenciaKafka: 1
+    concorrenciaOutbox: 4
+    grupoKafka: razao-v1
+    limiteLagKafka: 25
     usaSeguranca: true
     recursos:
       requisicoes: { cpu: 200m, memoria: 384Mi }
       limites: { cpu: "1", memoria: 640Mi }
   - chave: notificacao
+    habilitado: true
     nome: servico-notificacao
     imagem: servico-notificacao
     banco: orquestrapay_notificacao
@@ -160,11 +241,16 @@ servicos:
     replicas: 2
     usaBanco: true
     usaKafka: true
+    concorrenciaKafka: 1
+    concorrenciaOutbox: 4
+    grupoKafka: notificacao-v1
+    limiteLagKafka: 50
     usaSeguranca: true
     recursos:
       requisicoes: { cpu: 150m, memoria: 384Mi }
       limites: { cpu: 750m, memoria: 640Mi }
   - chave: provedor
+    habilitado: false
     nome: simulador-provedor
     imagem: simulador-provedor
     replicas: 1
@@ -179,5 +265,24 @@ servicos:
 autoscalonamento:
   habilitado: true
   minimoReplicas: 2
-  maximoReplicas: 8
+  maximoReplicas: 12
   cpuMedia: 70
+  keda:
+    habilitado: true
+    intervaloConsultaSegundos: 15
+    periodoResfriamentoSegundos: 300
+    limiteAtivacaoLag: 1
+    replicasFallback: 2
+    falhasParaFallback: 3
+
+karpenter:
+  habilitado: true
+  funcaoNos: orquestrapay-producao-karpenter-nos
+  identificadorDescoberta: orquestrapay-producao
+  aliasAmi: al2023@v20260610
+  limiteCpu: "160"
+  limiteMemoria: 640Gi
+  familiasInstancia: [c7i, c7a, m7i, m7a, r7i, r7a]
+  tiposCapacidade: [spot, on-demand]
+  consolidarApos: 5m
+  expirarApos: 720h

@@ -1,0 +1,2 @@
+ALTER TABLE conciliacao
+    ALTER COLUMN status TYPE VARCHAR(40);

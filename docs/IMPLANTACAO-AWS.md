@@ -8,12 +8,14 @@ A infraestrutura em `infra/terraform/aws` representa uma topologia de produção
 
 - VPC com sub-redes públicas e privadas em três zonas;
 - NAT Gateway para saída dos workloads privados;
-- EKS com grupo de nós gerenciado, OIDC, IRSA e Secrets criptografados por KMS;
+- EKS com grupo gerenciado mínimo, Karpenter, KEDA, Pod Identity, IRSA e Secrets criptografados por KMS;
 - ECR para as sete imagens;
-- RDS PostgreSQL criptografado;
+- RDS PostgreSQL Multi-AZ criptografado e RDS Proxy com TLS e credencial por domínio;
 - ElastiCache Redis com criptografia, TLS, autenticação e failover configurável;
 - MSK Serverless com autenticação IAM;
 - Cognito com escopos, grupos e clientes para PKCE e máquina a máquina;
+- WAFv2 com limite por IP e janela explícita, reputação, entradas maliciosas
+  conhecidas e logs;
 - Secrets Manager para banco, Redis, criptografia e integração com o provedor;
 - SNS criptografado por chave KMS própria e alarmes CloudWatch.
 
@@ -23,7 +25,11 @@ EKS, NAT Gateway, MSK Serverless, RDS, ElastiCache e tráfego geram cobrança co
 
 Para uma demonstração econômica, mantenha o Compose local ou reduza a topologia deliberadamente. Não aplique a infraestrutura completa apenas para produzir uma captura de tela.
 
-O perfil `portfolio` mantém RDS e Redis em uma única zona para controlar custos. Quando `ambiente = "producao"`, precondições do Terraform exigem RDS e Redis Multi-AZ, proteção contra exclusão, backups e 365 dias de logs. Os testes em `tests/perfis.tftest.hcl` comprovam os dois perfis sem acessar uma conta AWS.
+O perfil `portfolio` mantém RDS e Redis em uma única zona para controlar custos.
+Quando `ambiente = "producao"`, precondições do Terraform exigem RDS e Redis
+Multi-AZ, RDS Proxy, Karpenter, classes não burstable, proteção contra exclusão,
+backups e 365 dias de logs. Os testes em `tests/perfis.tftest.hcl` comprovam os
+dois perfis sem acessar uma conta AWS.
 
 ## Pré-requisitos
 
@@ -39,9 +45,23 @@ O token de autenticação do Redis é uma variável sensível obrigatória. Gere
 $env:TF_VAR_senha_redis = [Convert]::ToHexString(
   [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
 )
+
+$credenciaisBanco = @{}
+'checkout','estoque','risco','pagamento','razao','notificacao','registro' |
+  ForEach-Object {
+    $credenciaisBanco[$_] = [Convert]::ToHexString(
+      [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
+    )
+  }
+$env:TF_VAR_credenciais_proxy_banco = $credenciaisBanco |
+  ConvertTo-Json -Compress
 ```
 
-O valor fica marcado como sensível pelo Terraform, mas ainda integra o estado. Em produção, use backend remoto criptografado, versionado, com bloqueio e acesso mínimo ao arquivo de estado.
+Os valores ficam marcados como sensíveis pelo Terraform, mas ainda integram o
+estado. Em produção, use backend remoto criptografado, versionado, com bloqueio
+e acesso mínimo ao arquivo de estado. As sete credenciais alimentam o RDS Proxy
+e, pelos mesmos Secrets Manager, os respectivos pods; não mantenha uma segunda
+cópia manual dessas senhas.
 
 ## Validar sem criar recursos
 
@@ -84,27 +104,29 @@ terraform -chdir=infra/terraform/aws output
 
 Depois, execute o comando `comando_kubeconfig` mostrado nas saídas.
 
-Antes de implantar os pods, preencha o segredo de aplicação criado pelo Terraform. A propriedade `redis-senha` deve receber exatamente o mesmo valor usado em `TF_VAR_senha_redis`:
+Antes de implantar os pods, preencha o segredo de aplicação criado pelo
+Terraform. A propriedade `redis-senha` deve receber exatamente o mesmo valor
+usado em `TF_VAR_senha_redis`. As senhas PostgreSQL ficam nos sete segredos
+criados para o RDS Proxy e não entram neste JSON:
 
 ```powershell
 $chaveCriptografia = [Convert]::ToHexString(
   [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
 )
-$chaveProvedor = [Convert]::ToHexString(
-  [Security.Cryptography.RandomNumberGenerator]::GetBytes(24)
-)
-$senhaBanco = @{}
-'checkout','estoque','risco','pagamento','razao','notificacao','registro' | ForEach-Object {
-  $senhaBanco["banco-$($_)-senha"] = [Convert]::ToHexString(
+$novoSegredo = {
+  [Convert]::ToHexString(
     [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
   )
 }
 $segredoAplicacao = @{
-  'redis-senha'              = $env:TF_VAR_senha_redis
-  'chave-criptografia-token' = $chaveCriptografia
-  'chave-api-provedor'       = $chaveProvedor
+  'redis-senha'                              = $env:TF_VAR_senha_redis
+  'chave-criptografia-token'                 = $chaveCriptografia
+  'chave-api-provedor'                       = & $novoSegredo
+  'chave-api-provedor-principal'             = & $novoSegredo
+  'segredo-webhook-provedor-principal'       = & $novoSegredo
+  'chave-api-provedor-contingencia'          = & $novoSegredo
+  'segredo-webhook-provedor-contingencia'    = & $novoSegredo
 }
-$senhaBanco.GetEnumerator() | ForEach-Object { $segredoAplicacao[$_.Key] = $_.Value }
 $segredoAplicacao = $segredoAplicacao | ConvertTo-Json -Compress
 $arnSegredo = terraform -chdir=infra/terraform/aws output -raw aplicacao_segredo_arn
 aws secretsmanager put-secret-value --secret-id $arnSegredo --secret-string $segredoAplicacao
@@ -129,8 +151,27 @@ Instale antes da aplicação:
 - AWS Load Balancer Controller, se houver ingresso;
 - External Secrets Operator;
 - métricas do cluster para HPA;
+- Karpenter `1.14.1` e KEDA `2.20.2` nas versões fixadas pelo instalador;
 - coletor OpenTelemetry e plataforma de observabilidade;
 - Argo CD, caso use a aplicação declarada em `infra/kubernetes/argocd`.
+
+O Karpenter executa no grupo gerenciado sob demanda e cria nós AL2023 fixados
+em uma versão testada. As aplicações podem usar Spot com fallback sob demanda;
+a fila SQS recebe avisos de interrupção para drenar os pods antes da remoção. O
+NodePool limita CPU e memória para impedir escala de custo sem teto.
+
+Depois de instalar External Secrets, Load Balancer Controller e
+observabilidade, o comando abaixo instala Karpenter, KEDA e a aplicação usando
+as saídas reais do Terraform:
+
+```powershell
+.\scripts\instalar-autoscalonamento-aws.ps1
+```
+
+O script fixa Karpenter e KEDA, informa fila de interrupções, função dos nós e
+tag de descoberta, e espera os controladores ficarem prontos. Antes de promover
+uma nova AMI ou versão de controlador, repita carga, interrupção e rollback em
+homologação.
 
 ## Implantar com Helm
 
@@ -142,14 +183,24 @@ helm upgrade --install orquestrapay infra/kubernetes/helm/orquestrapay `
   --wait --timeout 15m
 ```
 
-Os valores de produção precisam usar as saídas reais do Terraform para ECR, RDS,
-Redis, MSK, Cognito e as duas funções IAM (`funcao_iam_aplicacao` e
-`funcao_iam_segredos`). A primeira autoriza somente o MSK; a segunda é usada
-exclusivamente pelo External Secrets. O arquivo versionado contém apenas exemplos.
+Os valores de produção precisam usar as saídas reais do Terraform para ECR,
+endpoint do RDS Proxy (`postgres_aplicacao_endpoint`), endpoint administrativo
+direto (`postgres_endpoint`), Redis, MSK, Cognito, segredos PostgreSQL e funções
+IAM. O host administrativo é usado somente pelo Job que cria bancos e usuários;
+os serviços e o Apicurio usam o proxy. O arquivo versionado contém apenas
+exemplos.
+
+Configure `global.seguranca.clientesId` com os clientes web e técnico,
+`clienteMaquinaId` com o cliente de Client Credentials e
+`empresaClienteMaquina` com o tenant fixo dessa integração. Use a saída
+`waf_api_arn` em `ingresso.wafAclArn`. Nunca permita que o consumidor escolha a
+empresa apenas enviando um claim ou cabeçalho.
 
 Ao habilitar `ingresso.habilitado`, informe um domínio válido e
 `ingresso.certificadoArn` com um certificado ACM. O chart aceita somente HTTPS no
-ALB e redireciona tentativas HTTP para a porta 443.
+ALB, exige o WAF e redireciona tentativas HTTP para a porta 443. As credenciais e
+segredos HMAC dos provedores principal e contingência devem ser distintos no
+Secrets Manager.
 
 ## Verificação pós-implantação
 
@@ -159,7 +210,9 @@ ALB e redireciona tentativas HTTP para a porta 443.
 4. autenticação e isolamento entre empresas testados;
 5. uma compra aprovada e uma compensada;
 6. métricas, logs e traces chegando aos destinos;
-7. HPA, PDB, backups e alarmes conferidos.
+7. KEDA reagindo a CPU e lag Kafka, Karpenter criando/removendo nós e PDBs respeitados;
+8. pool e latência do RDS Proxy, backups e alarmes conferidos;
+9. interrupção Spot simulada com backlog convergindo sem efeito financeiro duplicado.
 
 ## Destruir a bancada
 

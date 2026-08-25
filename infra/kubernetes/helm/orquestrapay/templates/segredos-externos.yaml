@@ -40,32 +40,32 @@ spec:
         property: password
     - secretKey: banco-checkout-senha
       remoteRef:
-        key: {{ .Values.segredos.externos.aplicacaoArn }}
-        property: banco-checkout-senha
+        key: {{ .Values.segredos.externos.bancos.checkoutArn }}
+        property: password
     - secretKey: banco-estoque-senha
       remoteRef:
-        key: {{ .Values.segredos.externos.aplicacaoArn }}
-        property: banco-estoque-senha
+        key: {{ .Values.segredos.externos.bancos.estoqueArn }}
+        property: password
     - secretKey: banco-risco-senha
       remoteRef:
-        key: {{ .Values.segredos.externos.aplicacaoArn }}
-        property: banco-risco-senha
+        key: {{ .Values.segredos.externos.bancos.riscoArn }}
+        property: password
     - secretKey: banco-pagamento-senha
       remoteRef:
-        key: {{ .Values.segredos.externos.aplicacaoArn }}
-        property: banco-pagamento-senha
+        key: {{ .Values.segredos.externos.bancos.pagamentoArn }}
+        property: password
     - secretKey: banco-razao-senha
       remoteRef:
-        key: {{ .Values.segredos.externos.aplicacaoArn }}
-        property: banco-razao-senha
+        key: {{ .Values.segredos.externos.bancos.razaoArn }}
+        property: password
     - secretKey: banco-notificacao-senha
       remoteRef:
-        key: {{ .Values.segredos.externos.aplicacaoArn }}
-        property: banco-notificacao-senha
+        key: {{ .Values.segredos.externos.bancos.notificacaoArn }}
+        property: password
     - secretKey: banco-registro-senha
       remoteRef:
-        key: {{ .Values.segredos.externos.aplicacaoArn }}
-        property: banco-registro-senha
+        key: {{ .Values.segredos.externos.bancos.registroArn }}
+        property: password
     - secretKey: redis-senha
       remoteRef:
         key: {{ .Values.segredos.externos.aplicacaoArn }}
@@ -78,4 +78,20 @@ spec:
       remoteRef:
         key: {{ .Values.segredos.externos.aplicacaoArn }}
         property: chave-api-provedor
+    - secretKey: chave-api-provedor-principal
+      remoteRef:
+        key: {{ .Values.segredos.externos.aplicacaoArn }}
+        property: chave-api-provedor-principal
+    - secretKey: segredo-webhook-provedor-principal
+      remoteRef:
+        key: {{ .Values.segredos.externos.aplicacaoArn }}
+        property: segredo-webhook-provedor-principal
+    - secretKey: chave-api-provedor-contingencia
+      remoteRef:
+        key: {{ .Values.segredos.externos.aplicacaoArn }}
+        property: chave-api-provedor-contingencia
+    - secretKey: segredo-webhook-provedor-contingencia
+      remoteRef:
+        key: {{ .Values.segredos.externos.aplicacaoArn }}
+        property: segredo-webhook-provedor-contingencia
 {{- end }}

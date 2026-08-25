@@ -104,11 +104,30 @@ resource "aws_eks_node_group" "principal" {
   }
 
   update_config { max_unavailable = 1 }
+
+  lifecycle {
+    precondition {
+      condition     = var.nos_minimos <= var.nos_desejados && var.nos_desejados <= var.nos_maximos
+      error_message = "A quantidade de nos deve respeitar minimo <= desejado <= maximo."
+    }
+    precondition {
+      condition     = lower(var.ambiente) != "producao" || !can(regex("^t[0-9]", lower(var.tipo_instancia_nos)))
+      error_message = "Producao nao deve usar instancias EKS burstable da familia T."
+    }
+    precondition {
+      condition     = lower(var.ambiente) != "producao" || var.habilitar_karpenter
+      error_message = "Producao exige Karpenter para adicionar capacidade quando o KEDA criar novos pods."
+    }
+  }
+
   depends_on = [aws_iam_role_policy_attachment.nos]
 }
 
 resource "aws_eks_addon" "essenciais" {
-  for_each     = toset(["vpc-cni", "coredns", "kube-proxy", "metrics-server"])
+  for_each = toset(concat(
+    ["vpc-cni", "coredns", "kube-proxy", "metrics-server"],
+    var.habilitar_karpenter ? ["eks-pod-identity-agent"] : []
+  ))
   cluster_name = aws_eks_cluster.principal.name
   addon_name   = each.value
   depends_on   = [aws_eks_node_group.principal]
@@ -210,10 +229,13 @@ resource "aws_iam_role_policy" "segredos" {
     Statement = [{
       Effect = "Allow"
       Action = ["secretsmanager:GetSecretValue"]
-      Resource = [
-        aws_db_instance.principal.master_user_secret[0].secret_arn,
-        aws_secretsmanager_secret.aplicacao.arn
-      ]
+      Resource = concat(
+        [
+          aws_db_instance.principal.master_user_secret[0].secret_arn,
+          aws_secretsmanager_secret.aplicacao.arn,
+        ],
+        [for segredo in values(aws_secretsmanager_secret.proxy_banco) : segredo.arn]
+      )
     }]
   })
 }

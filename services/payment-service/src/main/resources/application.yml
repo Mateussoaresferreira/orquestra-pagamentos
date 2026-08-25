@@ -7,6 +7,13 @@ spring:
     username: ${BANCO_USUARIO:orquestrapay}
     password: ${BANCO_SENHA}
   flyway.locations: classpath:db/migration/shared,classpath:db/migration/service
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORTA:6379}
+      password: ${REDIS_SENHA}
+      ssl:
+        enabled: ${REDIS_SSL:false}
   kafka:
     bootstrap-servers: ${KAFKA_SERVIDORES:localhost:9092}
     consumer:
@@ -37,27 +44,86 @@ orquestrapay:
   seguranca:
     habilitada: ${SEGURANCA_HABILITADA:true}
     emissor: ${OIDC_EMISSOR:}
-    cliente-id: ${OIDC_CLIENTE_ID:}
+    clientes-id: ${OIDC_CLIENTES_ID:${OIDC_CLIENTE_ID:}}
+    cliente-maquina-id: ${OIDC_CLIENTE_MAQUINA_ID:}
+    empresa-cliente-maquina: ${OIDC_EMPRESA_CLIENTE_MAQUINA:}
   criptografia:
     chave-token-base64: ${CHAVE_CRIPTOGRAFIA_TOKEN}
-  provedor:
-    url: ${PROVEDOR_URL:http://localhost:8090}
-    tempo-limite-conexao: ${PROVEDOR_TEMPO_LIMITE_CONEXAO:2s}
-    tempo-limite-leitura: ${PROVEDOR_TEMPO_LIMITE_LEITURA:5s}
-    chave-api: ${PROVEDOR_CHAVE_API}
+  pagamentos:
+    provedores:
+      principal:
+        url: ${PROVEDOR_PRINCIPAL_URL:${PROVEDOR_URL:http://localhost:8090}}
+        tempo-limite-conexao: ${PROVEDOR_TEMPO_LIMITE_CONEXAO:2s}
+        tempo-limite-leitura: ${PROVEDOR_TEMPO_LIMITE_LEITURA:5s}
+        chave-api: ${PROVEDOR_PRINCIPAL_CHAVE_API:${PROVEDOR_CHAVE_API}}
+        segredo-webhook: ${PROVEDOR_PRINCIPAL_SEGREDO_WEBHOOK:${PROVEDOR_CHAVE_API}}
+        prioridade: 10
+        metodos: [CARTAO, PIX]
+        maximo-concorrente: ${PROVEDOR_PRINCIPAL_MAXIMO_CONCORRENTE:20}
+        maximo-chamadas-por-periodo: ${PROVEDOR_PRINCIPAL_MAXIMO_CHAMADAS:200}
+        periodo-limite: ${PROVEDOR_PRINCIPAL_PERIODO_LIMITE:1s}
+      contingencia:
+        url: ${PROVEDOR_CONTINGENCIA_URL:http://localhost:8091}
+        tempo-limite-conexao: ${PROVEDOR_TEMPO_LIMITE_CONEXAO:2s}
+        tempo-limite-leitura: ${PROVEDOR_TEMPO_LIMITE_LEITURA:5s}
+        chave-api: ${PROVEDOR_CONTINGENCIA_CHAVE_API:${PROVEDOR_CHAVE_API}}
+        segredo-webhook: ${PROVEDOR_CONTINGENCIA_SEGREDO_WEBHOOK:${PROVEDOR_CHAVE_API}}
+        prioridade: 20
+        metodos: [CARTAO, PIX]
+        maximo-concorrente: ${PROVEDOR_CONTINGENCIA_MAXIMO_CONCORRENTE:10}
+        maximo-chamadas-por-periodo: ${PROVEDOR_CONTINGENCIA_MAXIMO_CHAMADAS:100}
+        periodo-limite: ${PROVEDOR_CONTINGENCIA_PERIODO_LIMITE:1s}
+    controle-provedores:
+      limite-distribuido-habilitado: ${PROVEDOR_LIMITE_DISTRIBUIDO_HABILITADO:true}
+      permitir-sem-redis: ${PROVEDOR_LIMITE_PERMITIR_SEM_REDIS:false}
+    trabalhador:
+      tamanho-lote: ${PAGAMENTO_TAMANHO_LOTE:20}
+      maximo-tentativas: ${PAGAMENTO_MAXIMO_TENTATIVAS:6}
+      duracao-bloqueio: ${PAGAMENTO_DURACAO_BLOQUEIO:30s}
+      atraso-inicial: ${PAGAMENTO_ATRASO_INICIAL:1s}
+      atraso-maximo: ${PAGAMENTO_ATRASO_MAXIMO:5m}
+      intervalo: ${PAGAMENTO_INTERVALO_MS:250}
+      intervalo-expiracao: ${PIX_INTERVALO_EXPIRACAO_MS:5000}
+    pix:
+      expiracao: ${PIX_EXPIRACAO:15m}
+      url-notificacao: ${PIX_URL_NOTIFICACAO:http://localhost:8083/api/v1/webhooks/provedores}
+      tolerancia-assinatura: ${PIX_TOLERANCIA_ASSINATURA:5m}
   eventos:
     habilitado: true
-    topico: ${TOPICO_SAGA:orquestrapay.saga.v1}
+    topicos:
+      checkout: ${TOPICO_CHECKOUT:orquestrapay.checkout.v1}
+      estoque: ${TOPICO_ESTOQUE:orquestrapay.estoque.v1}
+      risco: ${TOPICO_RISCO:orquestrapay.risco.v1}
+      pagamento: ${TOPICO_PAGAMENTO:orquestrapay.pagamento.v1}
+      razao: ${TOPICO_RAZAO:orquestrapay.razao.v1}
+      notificacao: ${TOPICO_NOTIFICACAO:orquestrapay.notificacao.v1}
+    particoes: ${TOPICOS_PARTICOES:12}
     intervalo-publicacao: 300
+  retencao-eventos:
+    habilitada: ${RETENCAO_EVENTOS_HABILITADA:true}
+    tamanho-lote: ${RETENCAO_EVENTOS_TAMANHO_LOTE:1000}
+    processados: ${RETENCAO_EVENTOS_PROCESSADOS:90d}
+    publicados: ${RETENCAO_EVENTOS_PUBLICADOS:7d}
+    quarentena: ${RETENCAO_EVENTOS_QUARENTENA:365d}
+    intervalo: ${RETENCAO_EVENTOS_INTERVALO:1h}
+    atraso-inicial: ${RETENCAO_EVENTOS_ATRASO_INICIAL:5m}
 resilience4j:
-  circuitbreaker.instances.provedor-pagamento:
+  circuitbreaker.configs.default:
     sliding-window-size: 10
     minimum-number-of-calls: 5
     failure-rate-threshold: 50
     wait-duration-in-open-state: 10s
-  retry.instances.provedor-pagamento:
+    ignore-exceptions:
+      - br.com.orquestrapay.payment.integration.ExcecaoRequisicaoProvedor
+      - br.com.orquestrapay.payment.integration.ExcecaoCotaProvedor
+      - br.com.orquestrapay.payment.integration.ExcecaoLimitadorProvedor
+  retry.configs.default:
     max-attempts: 3
     wait-duration: 250ms
+    ignore-exceptions:
+      - br.com.orquestrapay.payment.integration.ExcecaoRequisicaoProvedor
+      - br.com.orquestrapay.payment.integration.ExcecaoCotaProvedor
+      - br.com.orquestrapay.payment.integration.ExcecaoLimitadorProvedor
 management:
   endpoints.web.exposure.include: health,info,prometheus,metrics,circuitbreakers
   endpoint.health.probes.enabled: true

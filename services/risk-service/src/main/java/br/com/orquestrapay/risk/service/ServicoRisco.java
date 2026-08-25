@@ -74,6 +74,10 @@ public class ServicoRisco {
 
         SolicitacaoAnaliseRisco solicitacao = ler(evento);
         var agora = relogio.instant();
+        repositorio.bloquearJanelasDeVelocidade(
+                idEmpresa,
+                solicitacao.idCliente(),
+                solicitacao.identificadorDispositivo());
         var contexto = new ContextoRisco(
                 solicitacao.valorTotal(),
                 solicitacao.pais(),

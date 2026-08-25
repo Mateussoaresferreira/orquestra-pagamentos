@@ -21,3 +21,4 @@ scrape_configs:
           - servico-razao:8080
           - servico-notificacao:8080
           - simulador-provedor:8080
+          - simulador-provedor-contingencia:8080

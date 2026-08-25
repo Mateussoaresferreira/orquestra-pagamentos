@@ -46,6 +46,55 @@ groups:
         annotations:
           resumo: "Mais de 5% das compras exigiram compensacao nos ultimos 15 minutos"
 
+      - alert: FallbackDeProvedorElevado
+        expr: sum(increase(orquestrapay_roteamento_resultados_total{resultado="fallback"}[5m])) > 5
+        for: 2m
+        labels:
+          severidade: alta
+        annotations:
+          resumo: "O provedor principal esta exigindo fallback com frequencia"
+          descricao: "Investigue latencia, erros e circuito antes de a contingencia perder capacidade."
+
+      - alert: OperacaoPagamentoEmFalhaDefinitiva
+        expr: sum(increase(orquestrapay_operacoes_pagamento_total{resultado="FALHA_DEFINITIVA"}[5m])) > 0
+        labels:
+          severidade: critica
+        annotations:
+          resumo: "Uma operacao de pagamento esgotou todas as tentativas"
+          descricao: "Use a API operacional e a trilha de auditoria antes de reprocessar."
+
+      - alert: AssinaturaWebhookProvedorInvalida
+        expr: sum(increase(orquestrapay_webhooks_provedor_total{resultado="assinatura-invalida"}[5m])) > 0
+        labels:
+          severidade: critica
+        annotations:
+          resumo: "Webhook de provedor com assinatura HMAC invalida"
+          descricao: "Pode indicar segredo divergente, replay manipulado ou tentativa de fraude."
+
+      - alert: EntregaWebhookEmFalhaDefinitiva
+        expr: sum(increase(orquestrapay_webhooks_entregas_total{resultado="falha_definitiva"}[5m])) > 0
+        labels:
+          severidade: alta
+        annotations:
+          resumo: "Webhook empresarial esgotou as tentativas"
+          descricao: "A entrega permanece auditavel e pode ser reprocessada pela API."
+
+      - alert: SagaReativadaPeloWatchdog
+        expr: sum(increase(orquestrapay_sagas_reativadas_total[10m])) > 0
+        labels:
+          severidade: media
+        annotations:
+          resumo: "O watchdog encontrou e reativou uma saga sem progresso"
+          descricao: "Investigue a etapa, a fila e a dependencia que impediram o avancar normal."
+
+      - alert: DivergenciaDeConciliacaoDetectada
+        expr: sum(increase(orquestrapay_conciliacoes_divergencias_total[10m])) > 0
+        labels:
+          severidade: alta
+        annotations:
+          resumo: "A conciliacao detectou divergencia entre provedor e pagamento local"
+          descricao: "Use a API operacional para investigar e resolver a ocorrencia."
+
   - name: eventos-orquestrapay
     rules:
       - alert: OutboxComFilaElevada

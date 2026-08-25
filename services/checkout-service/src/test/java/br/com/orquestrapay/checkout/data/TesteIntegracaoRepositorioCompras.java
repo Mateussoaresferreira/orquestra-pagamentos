@@ -16,6 +16,7 @@ import br.com.orquestrapay.platform.security.PropriedadesCriptografia;
 import br.com.orquestrapay.platform.security.ProtecaoTokenPagamento;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -49,6 +50,11 @@ class TesteIntegracaoRepositorioCompras {
                 "0123456789abcdef0123456789abcdef".getBytes(StandardCharsets.UTF_8));
         protecaoToken = new ProtecaoTokenPagamento(new PropriedadesCriptografia(chave));
         repositorio = new RepositorioCompras(banco, protecaoToken);
+    }
+
+    @BeforeEach
+    void limparBanco() {
+        banco.sql("TRUNCATE compra CASCADE").update();
     }
 
     @Test
@@ -132,5 +138,43 @@ class TesteIntegracaoRepositorioCompras {
                 .param("idCompra", idCompra)
                 .query(Long.class)
                 .single()).isEqualTo(1);
+    }
+
+    @Test
+    void deveRemoverSomenteChavesDeIdempotenciaVencidas() {
+        Instant agora = Instant.parse("2026-08-25T00:00:00Z");
+        Compra antiga = novaCompra(agora.minusSeconds(100));
+        Compra recente = novaCompra(agora.minusSeconds(10));
+        repositorio.adicionar(antiga, "tok_antigo", "chave-antiga", "c".repeat(64));
+        repositorio.adicionar(recente, "tok_recente", "chave-recente", "d".repeat(64));
+
+        assertThat(repositorio.removerIdempotenciasAnterioresA(agora.minusSeconds(50), 100))
+                .isEqualTo(1);
+        assertThat(repositorio.buscarIdempotencia(antiga.idEmpresa(), "chave-antiga")).isEmpty();
+        assertThat(repositorio.buscarIdempotencia(recente.idEmpresa(), "chave-recente")).isPresent();
+        assertThat(repositorio.buscar(antiga.idEmpresa(), antiga.idCompra())).isPresent();
+        assertThat(repositorio.buscar(recente.idEmpresa(), recente.idCompra())).isPresent();
+    }
+
+    private Compra novaCompra(Instant criadaEm) {
+        return new Compra(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "cliente-retencao",
+                "retencao@exemplo.com",
+                "BRL",
+                "BR",
+                "dispositivo-retencao",
+                new BigDecimal("49.90"),
+                StatusCompra.RECEBIDA,
+                UUID.randomUUID(),
+                null,
+                null,
+                false,
+                false,
+                null,
+                criadaEm,
+                criadaEm,
+                List.of(new ItemCompra(UUID.randomUUID(), 1, new BigDecimal("49.90"))));
     }
 }

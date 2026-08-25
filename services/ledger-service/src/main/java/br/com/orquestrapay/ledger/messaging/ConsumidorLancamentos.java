@@ -16,7 +16,7 @@ public class ConsumidorLancamentos {
         this.razao = razao;
     }
 
-    @KafkaListener(topics = "${orquestrapay.eventos.topico}")
+    @KafkaListener(topics = "${orquestrapay.eventos.topicos.razao}")
     public void receber(EventoSaga evento) {
         if (REGISTRAR_LANCAMENTOS.equals(evento.getTipo())) {
             razao.registrar(evento);

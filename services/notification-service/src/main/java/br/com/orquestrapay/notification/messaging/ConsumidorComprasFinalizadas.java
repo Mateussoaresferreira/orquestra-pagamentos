@@ -25,7 +25,7 @@ public class ConsumidorComprasFinalizadas {
         this.notificacoes = notificacoes;
     }
 
-    @KafkaListener(topics = "${orquestrapay.eventos.topico:orquestrapay.saga.v1}")
+    @KafkaListener(topics = "${orquestrapay.eventos.topicos.notificacao}")
     public void receber(EventoSaga evento) {
         if (EVENTOS.contains(evento.getTipo())) {
             notificacoes.agendar(evento);

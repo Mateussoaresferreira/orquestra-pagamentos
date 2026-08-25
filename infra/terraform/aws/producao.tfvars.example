@@ -1,22 +1,39 @@
 ambiente                         = "producao"
 regiao                           = "us-east-1"
 versao_kubernetes                = "1.33"
-tipo_instancia_nos               = "t3.large"
+tipo_instancia_nos               = "m7i.large"
 nos_desejados                    = 3
 nos_minimos                      = 3
-nos_maximos                      = 9
-classe_banco                     = "db.t4g.medium"
+nos_maximos                      = 20
+habilitar_karpenter              = true
+classe_banco                     = "db.r7g.large"
 banco_multi_az                   = true
+habilitar_proxy_banco            = true
 retencao_backup_banco_dias       = 35
-classe_redis                     = "cache.t4g.small"
+classe_redis                     = "cache.r7g.large"
 redis_multi_az                   = true
 retencao_snapshot_redis_dias     = 7
 proteger_exclusao                = true
 retencao_logs_dias               = 365
 api_kubernetes_publica           = false
+habilitar_waf                    = true
+limite_waf_por_ip                = 2000
+janela_avaliacao_waf_segundos    = 60
 cidrs_api_kubernetes             = []
 cidrs_saida_https                = ["10.42.240.0/24"] # Substitua pelo CIDR privado do proxy ou firewall de saida.
 email_alertas                    = "alertas@exemplo.com"
+
+# Exemplo apenas estrutural. Injete valores reais por TF_VAR_credenciais_proxy_banco
+# e mantenha o estado Terraform remoto criptografado e com acesso restrito.
+credenciais_proxy_banco = {
+  checkout    = "substitua-checkout-por-segredo-forte"
+  estoque     = "substitua-estoque-por-segredo-forte"
+  risco       = "substitua-risco-por-segredo-forte"
+  pagamento   = "substitua-pagamento-por-segredo-forte"
+  razao       = "substitua-razao-por-segredo-forte"
+  notificacao = "substitua-notificacao-por-segredo-forte"
+  registro    = "substitua-registro-por-segredo-forte"
+}
 
 tags = {
   CentroCusto = "pagamentos"

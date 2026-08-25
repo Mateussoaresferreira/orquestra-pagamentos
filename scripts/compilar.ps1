@@ -12,8 +12,18 @@ function Testar-Java25 {
         return $false
     }
 
-    $versao = (& $Executavel -version 2>&1 | Out-String)
-    return $versao -match 'version "25(?:\.|\")'
+    $preferenciaErroAnterior = $ErrorActionPreference
+    try {
+        # O Java escreve a versao em stderr; no Windows PowerShell isso nao e uma falha.
+        $ErrorActionPreference = 'Continue'
+        $versao = (& $Executavel -version 2>&1 | Out-String)
+        $codigoSaida = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $preferenciaErroAnterior
+    }
+
+    return $codigoSaida -eq 0 -and $versao -match 'version "25(?:\.|\")'
 }
 
 if ($env:JAVA_HOME -and -not (Testar-Java25 "$env:JAVA_HOME\bin\java.exe")) {

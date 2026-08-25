@@ -4,16 +4,26 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
+import java.util.Set;
 import java.util.UUID;
 
 import br.com.orquestrapay.provider.api.PedidoAutorizacao;
+import br.com.orquestrapay.provider.config.PropriedadesSimulador;
+import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.server.ResponseStatusException;
 
 class TesteServicoSimulador {
 
-    private final ServicoSimulador servico = new ServicoSimulador();
+    private final ServicoSimulador servico = new ServicoSimulador(
+            new PropriedadesSimulador(
+                    "principal",
+                    "segredo-webhook-com-mais-de-vinte-quatro-caracteres",
+                    Set.of("localhost")),
+            RestClient.create(),
+            new ObjectMapper());
 
     @Test
     void deveAutorizarPagamentoERepetirAMesmaResposta() {

@@ -17,7 +17,7 @@ public class ConsumidorComandosPagamento {
         this.pagamentos = pagamentos;
     }
 
-    @KafkaListener(topics = "${orquestrapay.eventos.topico}")
+    @KafkaListener(topics = "${orquestrapay.eventos.topicos.pagamento}")
     public void receber(EventoSaga evento) {
         switch (evento.getTipo()) {
             case AUTORIZAR_PAGAMENTO -> pagamentos.autorizar(evento);

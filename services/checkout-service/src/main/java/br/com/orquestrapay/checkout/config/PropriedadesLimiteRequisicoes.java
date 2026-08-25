@@ -9,10 +9,16 @@ public record PropriedadesLimiteRequisicoes(
         boolean habilitado,
         int maximoPorJanela,
         Duration janela,
-        boolean permitirSemRedis) {
+        int maximoGlobalPorJanela,
+        Duration janelaGlobal,
+        boolean permitirSemRedis,
+        int maximoEmProcessamento) {
 
     public PropriedadesLimiteRequisicoes {
         maximoPorJanela = maximoPorJanela <= 0 ? 60 : maximoPorJanela;
         janela = janela == null ? Duration.ofMinutes(1) : janela;
+        maximoGlobalPorJanela = maximoGlobalPorJanela <= 0 ? 300 : maximoGlobalPorJanela;
+        janelaGlobal = janelaGlobal == null ? Duration.ofSeconds(1) : janelaGlobal;
+        maximoEmProcessamento = maximoEmProcessamento <= 0 ? 16 : maximoEmProcessamento;
     }
 }

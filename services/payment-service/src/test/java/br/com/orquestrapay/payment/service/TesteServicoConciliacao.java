@@ -18,6 +18,7 @@ import br.com.orquestrapay.payment.api.PedidoConciliacao;
 import br.com.orquestrapay.payment.api.RegistroProvedor;
 import br.com.orquestrapay.payment.api.RespostaPagamento;
 import br.com.orquestrapay.payment.data.RepositorioPagamentos;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -52,9 +53,11 @@ class TesteServicoConciliacao {
                 idEmpresa, List.of(idPagamentoLocal, idPagamentoAusente)))
                 .thenReturn(Map.of(idPagamentoLocal, pagamentoLocal));
 
+        var metricas = new SimpleMeterRegistry();
         var servico = new ServicoConciliacao(
                 repositorio,
-                Clock.fixed(agora, ZoneOffset.UTC));
+                Clock.fixed(agora, ZoneOffset.UTC),
+                metricas);
         var resultado = servico.conciliar(
                 idEmpresa,
                 new PedidoConciliacao(List.of(registroLocal, registroAusente)));
@@ -69,5 +72,10 @@ class TesteServicoConciliacao {
                 eq("AUSENTE_LOCALMENTE"),
                 any(String.class),
                 eq(agora));
+        assertThat(metricas.counter(
+                        "orquestrapay.conciliacoes.divergencias",
+                        "tipo",
+                        "AUSENTE_LOCALMENTE").count())
+                .isEqualTo(1);
     }
 }

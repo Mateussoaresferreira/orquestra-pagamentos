@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -78,5 +79,24 @@ class TesteProtecaoTokenPagamento {
         assertThatThrownBy(() -> new ProtecaoTokenPagamento(new PropriedadesCriptografia(chaveCurta)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("A chave de criptografia deve possuir 256 bits");
+    }
+
+    @Test
+    void deveRevelarTokenAntigoDepoisDaRotacaoDaChave() {
+        UUID idCompra = UUID.randomUUID();
+        String tokenAntigo = protecao.proteger("tok_em_transito", idCompra);
+        String novaChave = Base64.getEncoder().encodeToString(
+                "abcdef0123456789abcdef0123456789".getBytes(StandardCharsets.UTF_8));
+        var protecaoRotacionada = new ProtecaoTokenPagamento(new PropriedadesCriptografia(
+                null,
+                "v2",
+                Map.of("v1", CHAVE_VALIDA, "v2", novaChave),
+                CHAVE_VALIDA));
+
+        String tokenNovo = protecaoRotacionada.proteger("tok_novo", idCompra);
+
+        assertThat(tokenNovo).startsWith("v2:v2:");
+        assertThat(protecaoRotacionada.revelar(tokenAntigo, idCompra)).isEqualTo("tok_em_transito");
+        assertThat(protecaoRotacionada.revelar(tokenNovo, idCompra)).isEqualTo("tok_novo");
     }
 }

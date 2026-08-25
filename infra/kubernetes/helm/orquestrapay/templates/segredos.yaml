@@ -7,16 +7,20 @@ metadata:
     {{- include "orquestrapay.rotulos" . | nindent 4 }}
 type: Opaque
 stringData:
-  banco-usuario-mestre: {{ .Values.segredos.bancoUsuarioMestre | quote }}
-  banco-senha-mestre: {{ .Values.segredos.bancoSenhaMestre | quote }}
-  banco-checkout-senha: {{ .Values.segredos.bancoCheckoutSenha | quote }}
-  banco-estoque-senha: {{ .Values.segredos.bancoEstoqueSenha | quote }}
-  banco-risco-senha: {{ .Values.segredos.bancoRiscoSenha | quote }}
-  banco-pagamento-senha: {{ .Values.segredos.bancoPagamentoSenha | quote }}
-  banco-razao-senha: {{ .Values.segredos.bancoRazaoSenha | quote }}
-  banco-notificacao-senha: {{ .Values.segredos.bancoNotificacaoSenha | quote }}
-  banco-registro-senha: {{ .Values.segredos.bancoRegistroSenha | quote }}
-  redis-senha: {{ .Values.segredos.redisSenha | quote }}
-  chave-criptografia-token: {{ .Values.segredos.chaveCriptografiaToken | quote }}
-  chave-api-provedor: {{ .Values.segredos.chaveApiProvedor | quote }}
+  banco-usuario-mestre: {{ required "Defina segredos.bancoUsuarioMestre" .Values.segredos.bancoUsuarioMestre | quote }}
+  banco-senha-mestre: {{ required "Defina segredos.bancoSenhaMestre" .Values.segredos.bancoSenhaMestre | quote }}
+  banco-checkout-senha: {{ required "Defina segredos.bancoCheckoutSenha" .Values.segredos.bancoCheckoutSenha | quote }}
+  banco-estoque-senha: {{ required "Defina segredos.bancoEstoqueSenha" .Values.segredos.bancoEstoqueSenha | quote }}
+  banco-risco-senha: {{ required "Defina segredos.bancoRiscoSenha" .Values.segredos.bancoRiscoSenha | quote }}
+  banco-pagamento-senha: {{ required "Defina segredos.bancoPagamentoSenha" .Values.segredos.bancoPagamentoSenha | quote }}
+  banco-razao-senha: {{ required "Defina segredos.bancoRazaoSenha" .Values.segredos.bancoRazaoSenha | quote }}
+  banco-notificacao-senha: {{ required "Defina segredos.bancoNotificacaoSenha" .Values.segredos.bancoNotificacaoSenha | quote }}
+  banco-registro-senha: {{ required "Defina segredos.bancoRegistroSenha" .Values.segredos.bancoRegistroSenha | quote }}
+  redis-senha: {{ required "Defina segredos.redisSenha" .Values.segredos.redisSenha | quote }}
+  chave-criptografia-token: {{ required "Defina segredos.chaveCriptografiaToken" .Values.segredos.chaveCriptografiaToken | quote }}
+  chave-api-provedor: {{ required "Defina segredos.chaveApiProvedor" .Values.segredos.chaveApiProvedor | quote }}
+  chave-api-provedor-principal: {{ required "Defina segredos.chaveApiProvedorPrincipal" .Values.segredos.chaveApiProvedorPrincipal | quote }}
+  segredo-webhook-provedor-principal: {{ required "Defina segredos.segredoWebhookProvedorPrincipal" .Values.segredos.segredoWebhookProvedorPrincipal | quote }}
+  chave-api-provedor-contingencia: {{ required "Defina segredos.chaveApiProvedorContingencia" .Values.segredos.chaveApiProvedorContingencia | quote }}
+  segredo-webhook-provedor-contingencia: {{ required "Defina segredos.segredoWebhookProvedorContingencia" .Values.segredos.segredoWebhookProvedorContingencia | quote }}
 {{- end }}

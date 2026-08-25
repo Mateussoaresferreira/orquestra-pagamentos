@@ -31,9 +31,14 @@ resource "aws_db_instance" "principal" {
       condition = lower(var.ambiente) != "producao" || (
         var.banco_multi_az &&
         var.proteger_exclusao &&
-        var.retencao_backup_banco_dias >= 7
+        var.retencao_backup_banco_dias >= 7 &&
+        var.habilitar_proxy_banco
       )
-      error_message = "Producao exige RDS Multi-AZ, protecao contra exclusao e ao menos 7 dias de backup."
+      error_message = "Producao exige RDS Multi-AZ, RDS Proxy, protecao contra exclusao e ao menos 7 dias de backup."
+    }
+    precondition {
+      condition     = lower(var.ambiente) != "producao" || !startswith(lower(var.classe_banco), "db.t")
+      error_message = "Producao nao deve usar classe RDS burstable da familia T."
     }
   }
 }
@@ -76,6 +81,10 @@ resource "aws_elasticache_replication_group" "principal" {
         var.retencao_snapshot_redis_dias >= 7
       )
       error_message = "Producao exige Redis Multi-AZ com failover e ao menos 7 dias de snapshots."
+    }
+    precondition {
+      condition     = lower(var.ambiente) != "producao" || !startswith(lower(var.classe_redis), "cache.t")
+      error_message = "Producao nao deve usar classe Redis burstable da familia T."
     }
   }
 }

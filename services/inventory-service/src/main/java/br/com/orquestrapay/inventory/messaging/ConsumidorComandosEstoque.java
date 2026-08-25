@@ -17,7 +17,7 @@ public class ConsumidorComandosEstoque {
         this.estoque = estoque;
     }
 
-    @KafkaListener(topics = "${orquestrapay.eventos.topico}")
+    @KafkaListener(topics = "${orquestrapay.eventos.topicos.estoque}")
     public void receber(EventoSaga evento) {
         switch (evento.getTipo()) {
             case RESERVAR_ESTOQUE -> estoque.reservar(evento);

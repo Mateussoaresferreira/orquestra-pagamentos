@@ -33,6 +33,7 @@ spring:
       acks: all
     listener:
       ack-mode: record
+      concurrency: ${KAFKA_CONCORRENCIA:4}
     properties:
       apicurio.registry.url: ${REGISTRO_ESQUEMAS_URL:http://localhost:8088/apis/registry/v3}
       apicurio.registry.auto-register: ${REGISTRO_AUTO_CADASTRAR:true}
@@ -52,23 +53,60 @@ orquestrapay:
   seguranca:
     habilitada: ${SEGURANCA_HABILITADA:true}
     emissor: ${OIDC_EMISSOR:}
-    cliente-id: ${OIDC_CLIENTE_ID:}
+    clientes-id: ${OIDC_CLIENTES_ID:${OIDC_CLIENTE_ID:}}
+    cliente-maquina-id: ${OIDC_CLIENTE_MAQUINA_ID:}
+    empresa-cliente-maquina: ${OIDC_EMPRESA_CLIENTE_MAQUINA:}
   criptografia:
     chave-token-base64: ${CHAVE_CRIPTOGRAFIA_TOKEN}
   eventos:
     habilitado: true
-    topico: ${TOPICO_SAGA:orquestrapay.saga.v1}
+    topicos:
+      checkout: ${TOPICO_CHECKOUT:orquestrapay.checkout.v1}
+      estoque: ${TOPICO_ESTOQUE:orquestrapay.estoque.v1}
+      risco: ${TOPICO_RISCO:orquestrapay.risco.v1}
+      pagamento: ${TOPICO_PAGAMENTO:orquestrapay.pagamento.v1}
+      razao: ${TOPICO_RAZAO:orquestrapay.razao.v1}
+      notificacao: ${TOPICO_NOTIFICACAO:orquestrapay.notificacao.v1}
+    particoes: ${TOPICOS_PARTICOES:12}
     tamanho-lote: 50
+    concorrencia-publicacao: ${EVENTOS_CONCORRENCIA_PUBLICACAO:4}
     intervalo-publicacao: 300
     tempo-limite-publicacao: 10s
+    duracao-bloqueio: 30s
     maximo-tentativas: 12
     atraso-base: 1s
     atraso-maximo: 5m
+  retencao-eventos:
+    habilitada: ${RETENCAO_EVENTOS_HABILITADA:true}
+    tamanho-lote: ${RETENCAO_EVENTOS_TAMANHO_LOTE:1000}
+    processados: ${RETENCAO_EVENTOS_PROCESSADOS:90d}
+    publicados: ${RETENCAO_EVENTOS_PUBLICADOS:7d}
+    quarentena: ${RETENCAO_EVENTOS_QUARENTENA:365d}
+    intervalo: ${RETENCAO_EVENTOS_INTERVALO:1h}
+    atraso-inicial: ${RETENCAO_EVENTOS_ATRASO_INICIAL:5m}
+  retencao-checkout:
+    habilitada: ${RETENCAO_CHECKOUT_HABILITADA:true}
+    tamanho-lote: ${RETENCAO_CHECKOUT_TAMANHO_LOTE:1000}
+    chaves-idempotencia: ${RETENCAO_CHECKOUT_CHAVES:90d}
+    intervalo: ${RETENCAO_CHECKOUT_INTERVALO:1h}
+    atraso-inicial: ${RETENCAO_CHECKOUT_ATRASO_INICIAL:10m}
   limite-requisicoes:
     habilitado: ${LIMITE_REQUISICOES_HABILITADO:true}
     maximo-por-janela: ${LIMITE_REQUISICOES_MAXIMO:60}
-    janela: 1m
+    janela: ${LIMITE_REQUISICOES_JANELA:1m}
+    maximo-global-por-janela: ${LIMITE_REQUISICOES_GLOBAL_MAXIMO:300}
+    janela-global: ${LIMITE_REQUISICOES_GLOBAL_JANELA:1s}
     permitir-sem-redis: ${LIMITE_PERMITIR_SEM_REDIS:false}
+    maximo-em-processamento: ${ADMISSAO_MAXIMO_EM_PROCESSAMENTO:16}
+  watchdog-saga:
+    habilitado: ${WATCHDOG_SAGA_HABILITADO:true}
+    intervalo: ${WATCHDOG_SAGA_INTERVALO:5m}
+    tamanho-lote: ${WATCHDOG_SAGA_TAMANHO_LOTE:50}
+    limite-recebida: ${WATCHDOG_LIMITE_RECEBIDA:2m}
+    limite-estoque-reservado: ${WATCHDOG_LIMITE_ESTOQUE:2m}
+    limite-risco-aprovado: ${WATCHDOG_LIMITE_RISCO:2m}
+    limite-pagamento-autorizado: ${WATCHDOG_LIMITE_PAGAMENTO:2m}
+    limite-compensando: ${WATCHDOG_LIMITE_COMPENSANDO:5m}
 
 management:
   endpoints:

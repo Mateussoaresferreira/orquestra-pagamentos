@@ -7,5 +7,14 @@ public record PedidoAutorizacaoProvedor(
         UUID idCompra,
         BigDecimal valor,
         String moeda,
-        String tokenPagamento) {
+        String tokenPagamento,
+        int parcelas) {
+
+    public PedidoAutorizacaoProvedor(
+            UUID idCompra,
+            BigDecimal valor,
+            String moeda,
+            String tokenPagamento) {
+        this(idCompra, valor, moeda, tokenPagamento, 1);
+    }
 }

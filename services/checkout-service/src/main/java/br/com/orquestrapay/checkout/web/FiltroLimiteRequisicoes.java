@@ -1,8 +1,10 @@
 package br.com.orquestrapay.checkout.web;
 
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
 import java.util.UUID;
 
+import br.com.orquestrapay.checkout.service.ControladorAdmissaoLocal;
 import br.com.orquestrapay.checkout.service.LimitadorRequisicoes;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.FilterChain;
@@ -24,14 +26,17 @@ public class FiltroLimiteRequisicoes extends OncePerRequestFilter {
     private static final Logger log = LoggerFactory.getLogger(FiltroLimiteRequisicoes.class);
 
     private final LimitadorRequisicoes limitador;
+    private final ControladorAdmissaoLocal admissaoLocal;
     private final ObjectMapper json;
     private final MeterRegistry metricas;
 
     public FiltroLimiteRequisicoes(
             LimitadorRequisicoes limitador,
+            ControladorAdmissaoLocal admissaoLocal,
             ObjectMapper json,
             MeterRegistry metricas) {
         this.limitador = limitador;
+        this.admissaoLocal = admissaoLocal;
         this.json = json;
         this.metricas = metricas;
     }
@@ -52,35 +57,54 @@ public class FiltroLimiteRequisicoes extends OncePerRequestFilter {
             cadeia.doFilter(requisicao, resposta);
             return;
         }
-        try {
-            var resultado = limitador.consumir(UUID.fromString(idEmpresa).toString());
-            resposta.setHeader("X-RateLimit-Limit",
-                    Integer.toString(limitador.propriedades().maximoPorJanela()));
-            resposta.setHeader("X-RateLimit-Remaining", Long.toString(resultado.restante()));
-            if (!resultado.permitido()) {
-                metricas.counter("orquestrapay.requisicoes.limitadas").increment();
-                resposta.setHeader("Retry-After",
-                        Long.toString(Math.max(1, limitador.propriedades().janela().toSeconds())));
-                escreverProblema(
-                        resposta,
-                        HttpStatus.TOO_MANY_REQUESTS.value(),
-                        "limite-requisicoes-excedido",
-                        "Aguarde antes de iniciar outra compra");
-                return;
-            }
-        } catch (RedisConnectionFailureException excecao) {
-            metricas.counter("orquestrapay.redis.indisponivel").increment();
-            log.warn("Redis indisponivel durante a verificacao do limite de requisicoes", excecao);
-            if (!limitador.propriedades().permitirSemRedis()) {
-                escreverProblema(
-                        resposta,
-                        HttpServletResponse.SC_SERVICE_UNAVAILABLE,
-                        "limitador-indisponivel",
-                        "Nao foi possivel validar o limite de requisicoes");
-                return;
-            }
+
+        var permissao = admissaoLocal.tentarAdmitir();
+        if (permissao.isEmpty()) {
+            metricas.counter("orquestrapay.requisicoes.limitadas", "escopo", "replica").increment();
+            resposta.setHeader("Retry-After", "1");
+            escreverProblema(
+                    resposta,
+                    HttpStatus.TOO_MANY_REQUESTS.value(),
+                    "capacidade-temporariamente-esgotada",
+                    "A capacidade momentanea desta replica foi atingida; tente novamente");
+            return;
         }
-        cadeia.doFilter(requisicao, resposta);
+
+        try (var concessao = permissao.orElseThrow()) {
+            try {
+                var resultado = limitador.consumir(UUID.fromString(idEmpresa).toString());
+                resposta.setHeader("X-RateLimit-Limit",
+                        Integer.toString(limitador.propriedades().maximoPorJanela()));
+                resposta.setHeader("X-RateLimit-Remaining", Long.toString(resultado.restanteEmpresa()));
+                resposta.setHeader("X-RateLimit-Global-Limit",
+                        Integer.toString(limitador.propriedades().maximoGlobalPorJanela()));
+                resposta.setHeader("X-RateLimit-Global-Remaining", Long.toString(resultado.restanteGlobal()));
+                if (!resultado.permitido()) {
+                    metricas.counter("orquestrapay.requisicoes.limitadas", "escopo", "distribuido").increment();
+                    resposta.setHeader("Retry-After", Long.toString(Math.max(
+                            1,
+                            TimeUnit.MILLISECONDS.toSeconds(resultado.tentarNovamenteEmMillis()) + 1)));
+                    escreverProblema(
+                            resposta,
+                            HttpStatus.TOO_MANY_REQUESTS.value(),
+                            "limite-requisicoes-excedido",
+                            "Aguarde antes de iniciar outra compra");
+                    return;
+                }
+            } catch (RedisConnectionFailureException excecao) {
+                metricas.counter("orquestrapay.redis.indisponivel").increment();
+                log.warn("Redis indisponivel durante a verificacao do limite de requisicoes", excecao);
+                if (!limitador.propriedades().permitirSemRedis()) {
+                    escreverProblema(
+                            resposta,
+                            HttpServletResponse.SC_SERVICE_UNAVAILABLE,
+                            "limitador-indisponivel",
+                            "Nao foi possivel validar o limite de requisicoes");
+                    return;
+                }
+            }
+            cadeia.doFilter(requisicao, resposta);
+        }
     }
 
     private boolean empresaValida(String idEmpresa) {

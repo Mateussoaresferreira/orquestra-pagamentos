@@ -1,8 +1,8 @@
 asyncapi: 3.1.0
 info:
   title: Eventos da saga Orquestra de Pagamentos
-  version: 1.0.0
-  description: Contrato do fluxo assíncrono de compras, recusas e compensações.
+  version: 1.1.0
+  description: Contrato dos fluxos assíncronos separados por domínio e suas filas de falha.
 defaultContentType: application/vnd.apache.avro+avro
 servers:
   local:
@@ -10,35 +10,115 @@ servers:
     protocol: kafka
     description: Broker do ambiente Docker local.
 channels:
-  saga:
-    address: orquestrapay.saga.v1
+  checkout:
+    address: orquestrapay.checkout.v1
     messages:
       eventoSaga:
         $ref: '#/components/messages/eventoSaga'
-  sagaMorta:
-    address: orquestrapay.saga.v1.dlt
+  estoque:
+    address: orquestrapay.estoque.v1
+    messages:
+      eventoSaga:
+        $ref: '#/components/messages/eventoSaga'
+  risco:
+    address: orquestrapay.risco.v1
+    messages:
+      eventoSaga:
+        $ref: '#/components/messages/eventoSaga'
+  pagamento:
+    address: orquestrapay.pagamento.v1
+    messages:
+      eventoSaga:
+        $ref: '#/components/messages/eventoSaga'
+  razao:
+    address: orquestrapay.razao.v1
+    messages:
+      eventoSaga:
+        $ref: '#/components/messages/eventoSaga'
+  notificacao:
+    address: orquestrapay.notificacao.v1
+    messages:
+      eventoSaga:
+        $ref: '#/components/messages/eventoSaga'
+  checkoutMorto:
+    address: orquestrapay.checkout.v1.dlt
+    messages:
+      eventoSagaFalho:
+        $ref: '#/components/messages/eventoSaga'
+  estoqueMorto:
+    address: orquestrapay.estoque.v1.dlt
+    messages:
+      eventoSagaFalho:
+        $ref: '#/components/messages/eventoSaga'
+  riscoMorto:
+    address: orquestrapay.risco.v1.dlt
+    messages:
+      eventoSagaFalho:
+        $ref: '#/components/messages/eventoSaga'
+  pagamentoMorto:
+    address: orquestrapay.pagamento.v1.dlt
+    messages:
+      eventoSagaFalho:
+        $ref: '#/components/messages/eventoSaga'
+  razaoMorto:
+    address: orquestrapay.razao.v1.dlt
+    messages:
+      eventoSagaFalho:
+        $ref: '#/components/messages/eventoSaga'
+  notificacaoMorta:
+    address: orquestrapay.notificacao.v1.dlt
     messages:
       eventoSagaFalho:
         $ref: '#/components/messages/eventoSaga'
 operations:
-  publicarNaSaga:
-    action: send
-    channel:
-      $ref: '#/channels/saga'
-    messages:
-      - $ref: '#/channels/saga/messages/eventoSaga'
-  consumirDaSaga:
+  receberResultadoNoCheckout:
     action: receive
     channel:
-      $ref: '#/channels/saga'
-    messages:
-      - $ref: '#/channels/saga/messages/eventoSaga'
-  investigarFalhas:
+      $ref: '#/channels/checkout'
+  processarEstoque:
     action: receive
     channel:
-      $ref: '#/channels/sagaMorta'
-    messages:
-      - $ref: '#/channels/sagaMorta/messages/eventoSagaFalho'
+      $ref: '#/channels/estoque'
+  processarRisco:
+    action: receive
+    channel:
+      $ref: '#/channels/risco'
+  processarPagamento:
+    action: receive
+    channel:
+      $ref: '#/channels/pagamento'
+  processarRazao:
+    action: receive
+    channel:
+      $ref: '#/channels/razao'
+  processarNotificacao:
+    action: receive
+    channel:
+      $ref: '#/channels/notificacao'
+  investigarFalhasCheckout:
+    action: receive
+    channel:
+      $ref: '#/channels/checkoutMorto'
+  investigarFalhasEstoque:
+    action: receive
+    channel:
+      $ref: '#/channels/estoqueMorto'
+  investigarFalhasRisco:
+    action: receive
+    channel:
+      $ref: '#/channels/riscoMorto'
+  investigarFalhasPagamento:
+    action: receive
+    channel:
+      $ref: '#/channels/pagamentoMorto'
+  investigarFalhasRazao:
+    action: receive
+    channel:
+      $ref: '#/channels/razaoMorto'
+  investigarFalhasNotificacao:
+    action: receive
+    channel:
+      $ref: '#/channels/notificacaoMorta'
 components:
   messages:
     eventoSaga:

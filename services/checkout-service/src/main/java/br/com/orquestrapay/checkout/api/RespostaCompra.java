@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 import br.com.orquestrapay.checkout.domain.Compra;
+import br.com.orquestrapay.contracts.MetodoPagamento;
 
 public record RespostaCompra(
         UUID idCompra,
@@ -12,6 +13,8 @@ public record RespostaCompra(
         String status,
         BigDecimal valorTotal,
         String moeda,
+        MetodoPagamento metodoPagamento,
+        int parcelas,
         String motivo,
         Instant criadoEm,
         Instant atualizadoEm) {
@@ -23,6 +26,8 @@ public record RespostaCompra(
                 compra.status().name(),
                 compra.valorTotal(),
                 compra.moeda(),
+                compra.metodoPagamento(),
+                compra.parcelas(),
                 compra.motivo(),
                 compra.criadoEm(),
                 compra.atualizadoEm());

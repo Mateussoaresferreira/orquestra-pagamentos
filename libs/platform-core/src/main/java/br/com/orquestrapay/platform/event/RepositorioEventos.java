@@ -2,8 +2,11 @@ package br.com.orquestrapay.platform.event;
 
 import java.time.Instant;
 import java.sql.Types;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import br.com.orquestrapay.platform.data.DatasSql;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -51,22 +54,47 @@ public class RepositorioEventos {
                 .single();
     }
 
-    public List<EventoPendente> buscarPendentes(int limite, int maximoTentativas) {
-        return banco.sql("""
-                        SELECT id_evento, ordem, tipo, versao, id_correlacao,
-                               id_empresa, id_compra, origem, conteudo,
-                               traceparent, ocorrido_em, tentativas
-                          FROM evento_saida
-                         WHERE publicado_em IS NULL
-                           AND descartado_em IS NULL
-                           AND proxima_tentativa_em <= CURRENT_TIMESTAMP
-                           AND tentativas < :maximoTentativas
-                         ORDER BY ordem
-                         FOR UPDATE SKIP LOCKED
-                         LIMIT :limite
+    public List<EventoPendente> reivindicarPendentes(
+            int limite,
+            int maximoTentativas,
+            Instant agora,
+            Instant bloqueadoAte) {
+        UUID tokenBloqueio = UUID.randomUUID();
+        List<EventoPendente> eventos = banco.sql("""
+                        WITH selecionados AS (
+                            SELECT atual.id_evento
+                              FROM evento_saida atual
+                             WHERE atual.publicado_em IS NULL
+                               AND atual.descartado_em IS NULL
+                               AND atual.proxima_tentativa_em <= :agora
+                               AND (atual.bloqueado_ate IS NULL OR atual.bloqueado_ate <= :agora)
+                               AND atual.tentativas < :maximoTentativas
+                               AND NOT EXISTS (
+                                   SELECT 1
+                                     FROM evento_saida anterior
+                                    WHERE anterior.id_compra = atual.id_compra
+                                      AND anterior.ordem < atual.ordem
+                                      AND anterior.publicado_em IS NULL
+                               )
+                             ORDER BY atual.ordem
+                             FOR UPDATE OF atual SKIP LOCKED
+                             LIMIT :limite
+                        )
+                        UPDATE evento_saida evento
+                           SET bloqueado_ate = :bloqueadoAte,
+                               token_bloqueio = :tokenBloqueio
+                          FROM selecionados
+                         WHERE evento.id_evento = selecionados.id_evento
+                        RETURNING evento.id_evento, evento.ordem, evento.tipo, evento.versao,
+                                  evento.id_correlacao, evento.id_empresa, evento.id_compra,
+                                  evento.origem, evento.conteudo, evento.traceparent,
+                                  evento.ocorrido_em, evento.tentativas, evento.token_bloqueio
                         """)
                 .param("limite", limite)
                 .param("maximoTentativas", maximoTentativas)
+                .param("agora", DatasSql.gravar(agora))
+                .param("bloqueadoAte", DatasSql.gravar(bloqueadoAte))
+                .param("tokenBloqueio", tokenBloqueio)
                 .query((resultado, numeroLinha) -> new EventoPendente(
                         resultado.getObject("id_evento", UUID.class),
                         resultado.getLong("ordem"),
@@ -79,8 +107,12 @@ public class RepositorioEventos {
                         resultado.getString("conteudo"),
                         resultado.getString("traceparent"),
                         DatasSql.ler(resultado, "ocorrido_em"),
-                        resultado.getInt("tentativas")))
+                        resultado.getInt("tentativas"),
+                        resultado.getObject("token_bloqueio", UUID.class)))
                 .list();
+        return eventos.stream()
+                .sorted(Comparator.comparingLong(EventoPendente::ordem))
+                .toList();
     }
 
     public ResumoOutbox resumir() {
@@ -110,37 +142,150 @@ public class RepositorioEventos {
                 .single();
     }
 
-    public void marcarPublicado(UUID idEvento, Instant publicadoEm) {
+    public PaginaQuarentena listarQuarentena(UUID idEmpresa, int pagina, int tamanho) {
+        long total = banco.sql("""
+                        SELECT COUNT(*)
+                          FROM evento_saida
+                         WHERE id_empresa = :idEmpresa AND descartado_em IS NOT NULL
+                        """)
+                .param("idEmpresa", idEmpresa)
+                .query(Long.class)
+                .single();
+        List<EventoQuarentena> itens = banco.sql("""
+                        SELECT id_evento, tipo, versao, id_correlacao, id_compra,
+                               origem, tentativas, ultimo_erro, ocorrido_em, descartado_em
+                          FROM evento_saida
+                         WHERE id_empresa = :idEmpresa AND descartado_em IS NOT NULL
+                         ORDER BY descartado_em DESC, id_evento
+                         LIMIT :tamanho OFFSET :deslocamento
+                        """)
+                .param("idEmpresa", idEmpresa)
+                .param("tamanho", tamanho)
+                .param("deslocamento", pagina * tamanho)
+                .query((resultado, linha) -> new EventoQuarentena(
+                        resultado.getObject("id_evento", UUID.class),
+                        resultado.getString("tipo"),
+                        resultado.getInt("versao"),
+                        resultado.getObject("id_correlacao", UUID.class),
+                        resultado.getObject("id_compra", UUID.class),
+                        resultado.getString("origem"),
+                        resultado.getInt("tentativas"),
+                        abreviar(resultado.getString("ultimo_erro")),
+                        DatasSql.ler(resultado, "ocorrido_em"),
+                        DatasSql.ler(resultado, "descartado_em")))
+                .list();
+        return new PaginaQuarentena(itens, pagina, tamanho, total);
+    }
+
+    public boolean reprocessarQuarentena(
+            UUID idEmpresa,
+            UUID idEvento,
+            String responsavel,
+            Instant agora) {
+        int atualizados = banco.sql("""
+                        UPDATE evento_saida
+                           SET tentativas = 0,
+                               ultimo_erro = NULL,
+                               proxima_tentativa_em = :agora,
+                               descartado_em = NULL,
+                               bloqueado_ate = NULL,
+                               token_bloqueio = NULL
+                         WHERE id_evento = :idEvento
+                           AND id_empresa = :idEmpresa
+                           AND descartado_em IS NOT NULL
+                        """)
+                .param("idEvento", idEvento)
+                .param("idEmpresa", idEmpresa)
+                .param("agora", DatasSql.gravar(agora))
+                .update();
+        if (atualizados == 0) {
+            return false;
+        }
         banco.sql("""
+                        INSERT INTO auditoria_quarentena (
+                            id_auditoria, id_evento, acao,
+                            responsavel, detalhes, registrada_em
+                        ) VALUES (
+                            :idAuditoria, :idEvento, 'REPROCESSAR',
+                            :responsavel, 'Tentativas reiniciadas pela API administrativa', :agora
+                        )
+                        """)
+                .param("idAuditoria", UUID.randomUUID())
+                .param("idEvento", idEvento)
+                .param("responsavel", responsavel)
+                .param("agora", DatasSql.gravar(agora))
+                .update();
+        return true;
+    }
+
+    public boolean marcarPublicado(UUID idEvento, UUID tokenBloqueio, Instant publicadoEm) {
+        return banco.sql("""
                         UPDATE evento_saida
                            SET publicado_em = :publicadoEm,
                                tentativas = tentativas + 1,
-                               ultimo_erro = NULL
+                               ultimo_erro = NULL,
+                               bloqueado_ate = NULL,
+                               token_bloqueio = NULL
                          WHERE id_evento = :idEvento
+                           AND token_bloqueio = :tokenBloqueio
                         """)
                 .param("idEvento", idEvento)
+                .param("tokenBloqueio", tokenBloqueio)
                 .param("publicadoEm", DatasSql.gravar(publicadoEm))
-                .update();
+                .update() == 1;
     }
 
-    public void registrarFalha(
+    public int marcarPublicados(List<EventoPendente> eventos, Instant publicadoEm) {
+        if (eventos.isEmpty()) {
+            return 0;
+        }
+
+        Map<UUID, List<UUID>> idsPorToken = eventos.stream()
+                .collect(Collectors.groupingBy(
+                        EventoPendente::tokenBloqueio,
+                        Collectors.mapping(EventoPendente::idEvento, Collectors.toList())));
+
+        return idsPorToken.entrySet().stream()
+                .mapToInt(grupo -> banco.sql("""
+                                UPDATE evento_saida
+                                   SET publicado_em = :publicadoEm,
+                                       tentativas = tentativas + 1,
+                                       ultimo_erro = NULL,
+                                       bloqueado_ate = NULL,
+                                       token_bloqueio = NULL
+                                 WHERE token_bloqueio = :tokenBloqueio
+                                   AND id_evento IN (:idsEventos)
+                                """)
+                        .param("publicadoEm", DatasSql.gravar(publicadoEm))
+                        .param("tokenBloqueio", grupo.getKey())
+                        .param("idsEventos", grupo.getValue())
+                        .update())
+                .sum();
+    }
+
+    public boolean registrarFalha(
             UUID idEvento,
+            UUID tokenBloqueio,
             String erro,
             Instant proximaTentativaEm,
             Instant descartadoEm) {
-        banco.sql("""
+        return banco.sql("""
                         UPDATE evento_saida
                            SET tentativas = tentativas + 1,
                                ultimo_erro = :erro,
                                proxima_tentativa_em = :proximaTentativaEm,
-                               descartado_em = :descartadoEm
+                               descartado_em = :descartadoEm,
+                               bloqueado_ate = NULL,
+                               token_bloqueio = NULL
                          WHERE id_evento = :idEvento
+                           AND token_bloqueio = :tokenBloqueio
                         """)
                 .param("idEvento", idEvento)
+                .param("tokenBloqueio", tokenBloqueio)
                 .param("erro", abreviar(erro))
                 .param("proximaTentativaEm", DatasSql.gravar(proximaTentativaEm))
                 .param("descartadoEm", DatasSql.gravar(descartadoEm), Types.TIMESTAMP_WITH_TIMEZONE)
-                .update();
+                .update() == 1;
     }
 
     private String abreviar(String erro) {

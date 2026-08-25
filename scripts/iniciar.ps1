@@ -73,14 +73,15 @@ if (-not $SemCompilar) {
 }
 
 $aplicacoes = @(
-    'simulador-provedor', 'servico-checkout', 'servico-estoque',
+    'simulador-provedor', 'simulador-provedor-contingencia',
+    'servico-checkout', 'servico-estoque',
     'servico-risco', 'servico-pagamento', 'servico-razao',
     'servico-notificacao'
 )
 $infraestrutura = @(
     'banco-checkout', 'banco-estoque', 'banco-risco', 'banco-pagamento',
     'banco-razao', 'banco-notificacao', 'banco-registro', 'redis', 'kafka',
-    'criador-topicos', 'registro-esquemas'
+    'criador-topicos', 'registro-esquemas', 'receptor-webhook'
 )
 $observabilidade = @(
     'tempo', 'loki', 'prometheus', 'coletor-otel', 'alloy', 'grafana'

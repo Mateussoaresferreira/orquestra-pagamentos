@@ -35,6 +35,7 @@ resource "aws_subnet" "privada" {
   tags = {
     Name                              = "${local.prefixo}-privada-${each.key}"
     "kubernetes.io/role/internal-elb" = "1"
+    "karpenter.sh/discovery"          = local.prefixo
   }
 }
 
@@ -85,6 +86,10 @@ resource "aws_security_group" "aplicacao" {
   name        = "${local.prefixo}-aplicacao"
   description = "Comunicacao dos nos e pods da Orquestra de Pagamentos"
   vpc_id      = aws_vpc.principal.id
+
+  tags = {
+    "karpenter.sh/discovery" = local.prefixo
+  }
 
   dynamic "egress" {
     for_each = length(var.cidrs_saida_https) == 0 ? [] : [1]
@@ -159,11 +164,14 @@ resource "aws_security_group" "dados" {
   vpc_id      = aws_vpc.principal.id
 
   ingress {
-    description     = "PostgreSQL"
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.aplicacao.id]
+    description = "PostgreSQL"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    security_groups = concat(
+      [aws_security_group.aplicacao.id],
+      var.habilitar_proxy_banco ? [aws_security_group.proxy_banco[0].id] : []
+    )
   }
   ingress {
     description     = "Redis TLS"

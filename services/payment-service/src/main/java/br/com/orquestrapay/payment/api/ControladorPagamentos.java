@@ -13,6 +13,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.PatchMapping;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -40,5 +46,32 @@ public class ControladorPagamentos {
             @RequestHeader("X-Empresa-Id") UUID idEmpresa,
             @Valid @RequestBody PedidoConciliacao pedido) {
         return conciliacao.conciliar(idEmpresa, pedido);
+    }
+
+    @GetMapping("/conciliacoes")
+    @Operation(summary = "Lista as execucoes recentes de conciliacao")
+    List<RespostaConciliacaoResumo> listarConciliacoes(
+            @RequestHeader("X-Empresa-Id") UUID idEmpresa,
+            @RequestParam(defaultValue = "50") @Min(1) @Max(200) int limite) {
+        return conciliacao.listar(idEmpresa, limite);
+    }
+
+    @GetMapping("/conciliacoes/divergencias")
+    @Operation(summary = "Lista divergencias operacionais com filtro de status")
+    PaginaDivergencias listarDivergencias(
+            @RequestHeader("X-Empresa-Id") UUID idEmpresa,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "0") @Min(0) int pagina,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int tamanho) {
+        return conciliacao.listarDivergencias(idEmpresa, status, pagina, tamanho);
+    }
+
+    @PatchMapping("/conciliacoes/divergencias/{idDivergencia}")
+    @Operation(summary = "Move uma divergencia pelo fluxo operacional auditado")
+    RespostaDivergencia atualizarDivergencia(
+            @RequestHeader("X-Empresa-Id") UUID idEmpresa,
+            @PathVariable UUID idDivergencia,
+            @Valid @RequestBody AtualizacaoDivergencia atualizacao) {
+        return conciliacao.atualizarDivergencia(idEmpresa, idDivergencia, atualizacao);
     }
 }

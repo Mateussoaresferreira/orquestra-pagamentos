@@ -2,7 +2,13 @@ package br.com.orquestrapay.platform.event;
 
 import java.time.Clock;
 import java.nio.charset.StandardCharsets;
+import java.util.Comparator;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 import br.com.orquestrapay.contracts.EventoSaga;
 import org.slf4j.Logger;
@@ -10,46 +16,91 @@ import org.slf4j.LoggerFactory;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.transaction.annotation.Transactional;
 
 public class PublicadorEventos {
 
     private static final Logger log = LoggerFactory.getLogger(PublicadorEventos.class);
 
-    private final RepositorioEventos repositorio;
+    private final ServicoFilaEventos fila;
     private final KafkaTemplate<String, EventoSaga> kafka;
     private final PropriedadesEventos propriedades;
+    private final RoteadorTopicosEventos roteador;
     private final Clock relogio;
     private final MetricasEventos metricas;
 
     public PublicadorEventos(
-            RepositorioEventos repositorio,
+            ServicoFilaEventos fila,
             KafkaTemplate<String, EventoSaga> kafka,
             PropriedadesEventos propriedades,
+            RoteadorTopicosEventos roteador,
             Clock relogio,
             MetricasEventos metricas) {
-        this.repositorio = repositorio;
+        this.fila = fila;
         this.kafka = kafka;
         this.propriedades = propriedades;
+        this.roteador = roteador;
         this.relogio = relogio;
         this.metricas = metricas;
     }
 
     @Scheduled(fixedDelayString = "${orquestrapay.eventos.intervalo-publicacao:500}")
-    @Transactional
     public void publicarPendentes() {
         if (!propriedades.habilitado()) {
             return;
         }
 
-        for (EventoPendente pendente : repositorio.buscarPendentes(
-                propriedades.tamanhoLote(),
-                propriedades.maximoTentativas())) {
-            publicar(pendente);
+        var pendentes = fila.reivindicar();
+        if (pendentes.isEmpty()) {
+            return;
+        }
+
+        var eventosPorCompra = pendentes.stream()
+                .collect(Collectors.groupingBy(
+                        EventoPendente::idCompra,
+                        LinkedHashMap::new,
+                        Collectors.toList()));
+        var publicados = new ArrayList<EventoPendente>(pendentes.size());
+        var fabrica = Thread.ofVirtual().name("publicador-outbox-", 0).factory();
+        try (var executor = Executors.newFixedThreadPool(
+                propriedades.concorrenciaPublicacao(),
+                fabrica)) {
+            var tarefas = eventosPorCompra.values().stream()
+                    .map(eventos -> executor.submit(() -> publicarEmOrdem(eventos)))
+                    .toList();
+            for (var tarefa : tarefas) {
+                try {
+                    publicados.addAll(tarefa.get());
+                } catch (InterruptedException excecao) {
+                    Thread.currentThread().interrupt();
+                    return;
+                } catch (Exception excecao) {
+                    log.error("Falha inesperada no trabalhador de publicacao", excecao);
+                }
+            }
+        }
+
+        int confirmados = fila.confirmar(publicados);
+        if (confirmados != publicados.size()) {
+            log.warn(
+                    "A posse de {} eventos expirou antes da confirmacao em lote",
+                    publicados.size() - confirmados);
         }
     }
 
-    private void publicar(EventoPendente pendente) {
+    private List<EventoPendente> publicarEmOrdem(List<EventoPendente> eventos) {
+        var publicados = new ArrayList<EventoPendente>(eventos.size());
+        for (EventoPendente evento : eventos.stream()
+                .sorted(Comparator.comparingLong(EventoPendente::ordem))
+                .toList()) {
+            if (!publicar(evento)) {
+                break;
+            }
+            publicados.add(evento);
+        }
+        return publicados;
+    }
+
+    private boolean publicar(EventoPendente pendente) {
         try {
             EventoSaga evento = EventoSaga.newBuilder()
                     .setIdEvento(pendente.idEvento().toString())
@@ -65,8 +116,9 @@ public class PublicadorEventos {
                     .setTraceparent(pendente.traceparent())
                     .build();
 
+            String topico = roteador.destino(pendente.tipo());
             var registro = new ProducerRecord<String, EventoSaga>(
-                    propriedades.topico(), pendente.idCompra().toString(), evento);
+                    topico, pendente.idCompra().toString(), evento);
             if (pendente.traceparent() != null && !pendente.traceparent().isBlank()) {
                 registro.headers().add(
                         "traceparent",
@@ -74,8 +126,8 @@ public class PublicadorEventos {
             }
             kafka.send(registro)
                     .get(propriedades.tempoLimitePublicacao().toMillis(), TimeUnit.MILLISECONDS);
-            repositorio.marcarPublicado(pendente.idEvento(), relogio.instant());
-            metricas.registrarPublicacao();
+            metricas.registrarPublicacao(topico);
+            return true;
         } catch (InterruptedException excecao) {
             Thread.currentThread().interrupt();
             registrarFalha(pendente, "Publicacao interrompida");
@@ -83,6 +135,7 @@ public class PublicadorEventos {
             registrarFalha(pendente, excecao.getMessage());
             log.warn("Falha ao publicar o evento {} do tipo {}", pendente.idEvento(), pendente.tipo(), excecao);
         }
+        return false;
     }
 
     private void registrarFalha(EventoPendente pendente, String erro) {
@@ -94,10 +147,14 @@ public class PublicadorEventos {
                 : atrasoCalculado;
         var agora = relogio.instant();
         var descartadoEm = tentativaAtual >= propriedades.maximoTentativas() ? agora : null;
-        repositorio.registrarFalha(pendente.idEvento(), erro, agora.plus(atraso), descartadoEm);
-        metricas.registrarFalhaPublicacao();
+        if (!fila.registrarFalha(pendente, erro, agora.plus(atraso), descartadoEm)) {
+            log.warn("A posse do evento {} expirou antes do registro da falha", pendente.idEvento());
+            return;
+        }
+        String topico = roteador.destinoOuDesconhecido(pendente.tipo());
+        metricas.registrarFalhaPublicacao(topico);
         if (descartadoEm != null) {
-            metricas.registrarDescarte();
+            metricas.registrarDescarte(topico);
             log.error("Evento {} foi enviado para quarentena apos {} tentativas", pendente.idEvento(), tentativaAtual);
         }
     }

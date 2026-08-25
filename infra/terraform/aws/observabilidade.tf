@@ -81,6 +81,67 @@ resource "aws_cloudwatch_metric_alarm" "armazenamento_banco" {
   alarm_actions       = [aws_sns_topic.alertas.arn]
 }
 
+resource "aws_cloudwatch_metric_alarm" "conexoes_proxy_banco" {
+  count = var.habilitar_proxy_banco ? 1 : 0
+
+  alarm_name          = "${local.prefixo}-proxy-banco-conexoes-altas"
+  alarm_description   = "Mais de 70% das conexoes permitidas pelo RDS Proxy estao em uso"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 3
+  threshold           = 70
+  treat_missing_data  = "notBreaching"
+
+  metric_query {
+    id          = "percentual"
+    expression  = "100 * conexoes / maximo"
+    label       = "Utilizacao do pool do RDS Proxy (%)"
+    return_data = true
+  }
+
+  metric_query {
+    id = "conexoes"
+    metric {
+      namespace   = "AWS/RDS"
+      metric_name = "DatabaseConnections"
+      period      = 60
+      stat        = "Sum"
+      dimensions  = { ProxyName = aws_db_proxy.principal[0].name }
+    }
+  }
+
+  metric_query {
+    id = "maximo"
+    metric {
+      namespace   = "AWS/RDS"
+      metric_name = "MaxDatabaseConnectionsAllowed"
+      period      = 60
+      stat        = "Sum"
+      dimensions  = { ProxyName = aws_db_proxy.principal[0].name }
+    }
+  }
+
+  alarm_actions = [aws_sns_topic.alertas.arn]
+  ok_actions    = [aws_sns_topic.alertas.arn]
+}
+
+resource "aws_cloudwatch_metric_alarm" "espera_proxy_banco" {
+  count = var.habilitar_proxy_banco ? 1 : 0
+
+  alarm_name          = "${local.prefixo}-proxy-banco-espera-alta"
+  alarm_description   = "Emprestar uma conexao do RDS Proxy levou mais de 100 ms"
+  namespace           = "AWS/RDS"
+  metric_name         = "DatabaseConnectionsBorrowLatency"
+  statistic           = "Average"
+  period              = 60
+  evaluation_periods  = 3
+  threshold           = 100000
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  dimensions          = { ProxyName = aws_db_proxy.principal[0].name }
+  alarm_actions       = [aws_sns_topic.alertas.arn]
+  ok_actions          = [aws_sns_topic.alertas.arn]
+}
+
 resource "aws_cloudwatch_log_group" "aplicacao" {
   name              = "/${var.nome}/${var.ambiente}/aplicacao"
   retention_in_days = var.retencao_logs_dias

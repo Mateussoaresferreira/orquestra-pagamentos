@@ -2,6 +2,7 @@ package br.com.orquestrapay.platform.event;
 
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.ConcurrentHashMap;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
@@ -18,16 +19,14 @@ public class MetricasEventos {
     private final AtomicLong pendentes = new AtomicLong();
     private final AtomicLong quarentena = new AtomicLong();
     private final AtomicReference<Double> idadeMaisAntigaSegundos = new AtomicReference<>(0.0);
-    private final Counter publicados;
-    private final Counter falhasPublicacao;
-    private final Counter descartados;
-    private final Counter enviadosDlt;
+    private final MeterRegistry registro;
+    private final ConcurrentHashMap<String, Counter> contadores = new ConcurrentHashMap<>();
 
     public MetricasEventos(
             RepositorioEventos repositorio,
-            MeterRegistry registro,
-            String topico) {
+            MeterRegistry registro) {
         this.repositorio = repositorio;
+        this.registro = registro;
 
         Gauge.builder("orquestrapay.outbox.pendentes", pendentes, AtomicLong::get)
                 .description("Eventos aguardando publicacao no outbox")
@@ -42,14 +41,6 @@ public class MetricasEventos {
                 .description("Idade em segundos do evento pendente mais antigo")
                 .register(registro);
 
-        publicados = contador(registro, "orquestrapay.outbox.publicados", topico,
-                "Eventos publicados a partir do outbox");
-        falhasPublicacao = contador(registro, "orquestrapay.outbox.falhas", topico,
-                "Falhas ao publicar eventos do outbox");
-        descartados = contador(registro, "orquestrapay.outbox.descartados", topico,
-                "Eventos movidos para a quarentena do outbox");
-        enviadosDlt = contador(registro, "orquestrapay.dlt.eventos", topico + ".dlt",
-                "Eventos encaminhados para o topico de mensagens mortas");
     }
 
     @Scheduled(fixedDelayString = "${orquestrapay.eventos.intervalo-metricas:10000}")
@@ -64,30 +55,33 @@ public class MetricasEventos {
         }
     }
 
-    public void registrarPublicacao() {
-        publicados.increment();
+    public void registrarPublicacao(String topico) {
+        contador("orquestrapay.outbox.publicados", topico,
+                "Eventos publicados a partir do outbox").increment();
     }
 
-    public void registrarFalhaPublicacao() {
-        falhasPublicacao.increment();
+    public void registrarFalhaPublicacao(String topico) {
+        contador("orquestrapay.outbox.falhas", topico,
+                "Falhas ao publicar eventos do outbox").increment();
     }
 
-    public void registrarDescarte() {
-        descartados.increment();
+    public void registrarDescarte(String topico) {
+        contador("orquestrapay.outbox.descartados", topico,
+                "Eventos movidos para a quarentena do outbox").increment();
     }
 
-    public void registrarEnvioDlt() {
-        enviadosDlt.increment();
+    public void registrarEnvioDlt(String topico) {
+        contador("orquestrapay.dlt.eventos", topico,
+                "Eventos encaminhados para o topico de mensagens mortas").increment();
     }
 
     private Counter contador(
-            MeterRegistry registro,
             String nome,
             String topico,
             String descricao) {
-        return Counter.builder(nome)
+        return contadores.computeIfAbsent(nome + '|' + topico, ignorada -> Counter.builder(nome)
                 .description(descricao)
                 .tag("topico", topico)
-                .register(registro);
+                .register(registro));
     }
 }

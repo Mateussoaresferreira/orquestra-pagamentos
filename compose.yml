@@ -13,7 +13,13 @@ x-service-environment: &service-environment
   KAFKA_SERVIDORES: kafka:29092
   REGISTRO_ESQUEMAS_URL: http://registro-esquemas:8080/apis/registry/v3
   REGISTRO_AUTO_CADASTRAR: "true"
-  TOPICO_SAGA: orquestrapay.saga.v1
+  TOPICO_CHECKOUT: orquestrapay.checkout.v1
+  TOPICO_ESTOQUE: orquestrapay.estoque.v1
+  TOPICO_RISCO: orquestrapay.risco.v1
+  TOPICO_PAGAMENTO: orquestrapay.pagamento.v1
+  TOPICO_RAZAO: orquestrapay.razao.v1
+  TOPICO_NOTIFICACAO: orquestrapay.notificacao.v1
+  TOPICOS_PARTICOES: 12
   SEGURANCA_HABILITADA: "false"
   OIDC_EMISSOR: ${OIDC_EMISSOR:-}
   OIDC_CLIENTE_ID: ${OIDC_CLIENTE_ID:-}
@@ -196,13 +202,23 @@ services:
     command:
       - /bin/bash
       - -c
-      - >-
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092
-        --create --if-not-exists --topic orquestrapay.saga.v1
-        --partitions 12 --replication-factor 1 &&
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092
-        --create --if-not-exists --topic orquestrapay.saga.v1.dlt
-        --partitions 12 --replication-factor 1
+      - |-
+        set -e
+        for topico in \
+          orquestrapay.checkout.v1 \
+          orquestrapay.estoque.v1 \
+          orquestrapay.risco.v1 \
+          orquestrapay.pagamento.v1 \
+          orquestrapay.razao.v1 \
+          orquestrapay.notificacao.v1
+        do
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 \
+            --create --if-not-exists --topic "$${topico}" \
+            --partitions 12 --replication-factor 1
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 \
+            --create --if-not-exists --topic "$${topico}.dlt" \
+            --partitions 12 --replication-factor 1
+        done
     networks: [orquestrapay]
 
   registro-esquemas:
@@ -219,6 +235,14 @@ services:
         condition: service_healthy
     networks: [orquestrapay]
 
+  receptor-webhook:
+    image: wiremock/wiremock:3.13.2
+    command: ["--verbose"]
+    volumes:
+      - ./infra/wiremock:/home/wiremock:ro
+    ports: ["127.0.0.1:8092:8080"]
+    networks: [orquestrapay]
+
   simulador-provedor:
     <<: *service-defaults
     image: orquestrapay/simulador-provedor:local
@@ -226,7 +250,7 @@ services:
       context: ./support/provider-simulator
       dockerfile: ../../docker/Dockerfile
       args:
-        CAMINHO_ARTEFATO: target/simulador-provedor-0.1.0-SNAPSHOT.jar
+        CAMINHO_ARTEFATO: target/simulador-provedor-1.0.0.jar
     environment:
       PORTA: 8080
       JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
@@ -236,7 +260,30 @@ services:
       MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
       MANAGEMENT_METRICS_TAGS_APPLICATION: simulador-provedor
       PROVEDOR_CHAVE_API: ${PROVEDOR_CHAVE_API:?Execute scripts/iniciar.ps1 para gerar os segredos locais}
+      PROVEDOR_SEGREDO_WEBHOOK: ${PROVEDOR_CHAVE_API:?Execute scripts/iniciar.ps1 para gerar os segredos locais}
+      PROVEDOR_NOME: principal
     ports: ["127.0.0.1:8090:8080"]
+
+  simulador-provedor-contingencia:
+    <<: *service-defaults
+    image: orquestrapay/simulador-provedor:local
+    build:
+      context: ./support/provider-simulator
+      dockerfile: ../../docker/Dockerfile
+      args:
+        CAMINHO_ARTEFATO: target/simulador-provedor-1.0.0.jar
+    environment:
+      PORTA: 8080
+      JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://coletor-otel:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      OTEL_SERVICE_NAME: simulador-provedor-contingencia
+      MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "1.0"
+      MANAGEMENT_METRICS_TAGS_APPLICATION: simulador-provedor-contingencia
+      PROVEDOR_CHAVE_API: ${PROVEDOR_CHAVE_API:?Execute scripts/iniciar.ps1 para gerar os segredos locais}
+      PROVEDOR_SEGREDO_WEBHOOK: ${PROVEDOR_CHAVE_API:?Execute scripts/iniciar.ps1 para gerar os segredos locais}
+      PROVEDOR_NOME: contingencia
+    ports: ["127.0.0.1:8091:8080"]
 
   servico-checkout:
     <<: *service-defaults
@@ -245,7 +292,7 @@ services:
       context: ./services/checkout-service
       dockerfile: ../../docker/Dockerfile
       args:
-        CAMINHO_ARTEFATO: target/servico-checkout-0.1.0-SNAPSHOT.jar
+        CAMINHO_ARTEFATO: target/servico-checkout-1.0.0.jar
     environment:
       <<: *service-environment
       BANCO_URL: jdbc:postgresql://banco-checkout:5432/orquestrapay_checkout
@@ -269,7 +316,7 @@ services:
       context: ./services/inventory-service
       dockerfile: ../../docker/Dockerfile
       args:
-        CAMINHO_ARTEFATO: target/servico-estoque-0.1.0-SNAPSHOT.jar
+        CAMINHO_ARTEFATO: target/servico-estoque-1.0.0.jar
     environment:
       <<: *service-environment
       BANCO_URL: jdbc:postgresql://banco-estoque:5432/orquestrapay_estoque
@@ -289,7 +336,7 @@ services:
       context: ./services/risk-service
       dockerfile: ../../docker/Dockerfile
       args:
-        CAMINHO_ARTEFATO: target/servico-risco-0.1.0-SNAPSHOT.jar
+        CAMINHO_ARTEFATO: target/servico-risco-1.0.0.jar
     environment:
       <<: *service-environment
       BANCO_URL: jdbc:postgresql://banco-risco:5432/orquestrapay_risco
@@ -309,21 +356,28 @@ services:
       context: ./services/payment-service
       dockerfile: ../../docker/Dockerfile
       args:
-        CAMINHO_ARTEFATO: target/servico-pagamento-0.1.0-SNAPSHOT.jar
+        CAMINHO_ARTEFATO: target/servico-pagamento-1.0.0.jar
     environment:
       <<: *service-environment
       BANCO_URL: jdbc:postgresql://banco-pagamento:5432/orquestrapay_pagamento
-      PROVEDOR_URL: http://simulador-provedor:8080
+      REDIS_HOST: redis
+      REDIS_PORTA: 6379
+      REDIS_SENHA: ${REDIS_SENHA:?Execute scripts/iniciar.ps1 para gerar os segredos locais}
+      PROVEDOR_PRINCIPAL_URL: http://simulador-provedor:8080
+      PROVEDOR_CONTINGENCIA_URL: http://simulador-provedor-contingencia:8080
       PROVEDOR_CHAVE_API: ${PROVEDOR_CHAVE_API:?Execute scripts/iniciar.ps1 para gerar os segredos locais}
+      PIX_URL_NOTIFICACAO: http://servico-pagamento:8080/api/v1/webhooks/provedores
       OTEL_SERVICE_NAME: servico-pagamento
       MANAGEMENT_METRICS_TAGS_APPLICATION: servico-pagamento
     ports: ["127.0.0.1:8083:8080"]
     depends_on:
       banco-pagamento: {condition: service_healthy}
+      redis: {condition: service_healthy}
       kafka: {condition: service_healthy}
       criador-topicos: {condition: service_completed_successfully}
       registro-esquemas: {condition: service_started}
       simulador-provedor: {condition: service_healthy}
+      simulador-provedor-contingencia: {condition: service_healthy}
 
   servico-razao:
     <<: *service-defaults
@@ -332,7 +386,7 @@ services:
       context: ./services/ledger-service
       dockerfile: ../../docker/Dockerfile
       args:
-        CAMINHO_ARTEFATO: target/servico-razao-0.1.0-SNAPSHOT.jar
+        CAMINHO_ARTEFATO: target/servico-razao-1.0.0.jar
     environment:
       <<: *service-environment
       BANCO_URL: jdbc:postgresql://banco-razao:5432/orquestrapay_razao
@@ -352,10 +406,11 @@ services:
       context: ./services/notification-service
       dockerfile: ../../docker/Dockerfile
       args:
-        CAMINHO_ARTEFATO: target/servico-notificacao-0.1.0-SNAPSHOT.jar
+        CAMINHO_ARTEFATO: target/servico-notificacao-1.0.0.jar
     environment:
       <<: *service-environment
       BANCO_URL: jdbc:postgresql://banco-notificacao:5432/orquestrapay_notificacao
+      WEBHOOKS_PERMITIR_ENDERECOS_PRIVADOS: "true"
       OTEL_SERVICE_NAME: servico-notificacao
       MANAGEMENT_METRICS_TAGS_APPLICATION: servico-notificacao
     ports: ["127.0.0.1:8085:8080"]
@@ -364,6 +419,7 @@ services:
       kafka: {condition: service_healthy}
       criador-topicos: {condition: service_completed_successfully}
       registro-esquemas: {condition: service_started}
+      receptor-webhook: {condition: service_started}
 
   coletor-otel:
     image: otel/opentelemetry-collector-contrib:0.138.0

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "6646ac40-f6e8-4dc9-bb3d-91015ca2bd0f",
     "name": "Orquestra de Pagamentos - Fluxo completo",
-    "description": "Executa uma saga de compra real, valida idempotencia e consulta as evidencias produzidas pelos seis microsservicos. O ambiente local funciona sem token. Para seguranca habilitada, preencha tokenAcesso.",
+    "description": "Valida os fluxos reais de cartao parcelado, fallback entre provedores, PIX assincrono, webhooks HMAC, conciliacao, quarentena e evidencias produzidas pelos microsservicos. O ambiente local funciona sem token. Para seguranca habilitada, preencha tokenAcesso.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -16,10 +16,17 @@
     { "key": "chaveIdempotencia", "value": "" },
     { "key": "idCompra", "value": "" },
     { "key": "idPagamento", "value": "" },
+    { "key": "idDivergencia", "value": "" },
     { "key": "idCompraRecusada", "value": "" },
     { "key": "idCompraCompensada", "value": "" },
+    { "key": "idCompraFallback", "value": "" },
+    { "key": "idCompraPix", "value": "" },
+    { "key": "txidPix", "value": "" },
+    { "key": "urlProvedorPix", "value": "" },
     { "key": "tentativasSaga", "value": "" },
-    { "key": "tentativasNotificacao", "value": "" }
+    { "key": "tentativasNotificacao", "value": "" },
+    { "key": "tentativasRecusa", "value": "" },
+    { "key": "tentativasCompensacao", "value": "" }
   ],
   "item": [
     {
@@ -36,8 +43,11 @@
                   "pm.collectionVariables.set('chaveIdempotencia', 'postman-' + pm.variables.replaceIn('{{$guid}}'));",
                   "pm.collectionVariables.unset('idCompra');",
                   "pm.collectionVariables.unset('idPagamento');",
+                  "pm.collectionVariables.unset('idDivergencia');",
                   "pm.collectionVariables.unset('tentativasSaga');",
-                  "pm.collectionVariables.unset('tentativasNotificacao');"
+                  "pm.collectionVariables.unset('tentativasNotificacao');",
+                  "pm.collectionVariables.unset('tentativasRecusa');",
+                  "pm.collectionVariables.unset('tentativasCompensacao');"
                 ],
                 "type": "text/javascript"
               }
@@ -75,6 +85,21 @@
             "body": { "mode": "raw", "raw": "{\n  \"quantidadeDisponivel\": 100,\n  \"motivo\": \"Preparacao do fluxo Postman\"\n}" },
             "url": { "raw": "{{urlEstoque}}/api/v1/estoques/{{idProdutoB}}", "host": ["{{urlEstoque}}"], "path": ["api", "v1", "estoques", "{{idProdutoB}}"] }
           }
+        },
+        {
+          "name": "Configurar webhook empresarial",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Webhook configurado sem revelar o segredo', () => { pm.response.to.have.status(200); pm.expect(pm.response.json()).not.to.have.property('segredo'); });"
+          ], "type": "text/javascript" } }],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "X-Empresa-Id", "value": "{{idEmpresa}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"url\": \"http://receptor-webhook:8080/orquestrapay\",\n  \"segredo\": \"segredo-webhook-demonstracao-local-2026\",\n  \"eventos\": [\"COMPRA_CONCLUIDA\", \"COMPRA_RECUSADA\", \"COMPRA_COMPENSADA\"],\n  \"ativo\": true\n}" },
+            "url": { "raw": "{{urlNotificacao}}/api/v1/webhooks/configuracao", "host": ["{{urlNotificacao}}"], "path": ["api", "v1", "webhooks", "configuracao"] }
+          }
         }
       ]
     },
@@ -96,7 +121,7 @@
               { "key": "Idempotency-Key", "value": "{{chaveIdempotencia}}" },
               { "key": "Content-Type", "value": "application/json" }
             ],
-            "body": { "mode": "raw", "raw": "{\n  \"idCliente\": \"cliente-postman-001\",\n  \"emailCliente\": \"cliente.postman@orquestrapay.local\",\n  \"moeda\": \"BRL\",\n  \"pais\": \"BR\",\n  \"identificadorDispositivo\": \"notebook-postman-001\",\n  \"tokenPagamento\": \"tok_aprovado\",\n  \"itens\": [\n    { \"idProduto\": \"{{idProdutoA}}\", \"quantidade\": 2, \"precoUnitario\": 79.90 },\n    { \"idProduto\": \"{{idProdutoB}}\", \"quantidade\": 1, \"precoUnitario\": 39.90 }\n  ]\n}" },
+            "body": { "mode": "raw", "raw": "{\n  \"idCliente\": \"cliente-postman-001\",\n  \"emailCliente\": \"cliente.postman@orquestrapay.local\",\n  \"moeda\": \"BRL\",\n  \"pais\": \"BR\",\n  \"identificadorDispositivo\": \"notebook-postman-001\",\n  \"metodoPagamento\": \"CARTAO\",\n  \"parcelas\": 3,\n  \"tokenPagamento\": \"tok_aprovado\",\n  \"itens\": [\n    { \"idProduto\": \"{{idProdutoA}}\", \"quantidade\": 2, \"precoUnitario\": 79.90 },\n    { \"idProduto\": \"{{idProdutoB}}\", \"quantidade\": 1, \"precoUnitario\": 39.90 }\n  ]\n}" },
             "url": { "raw": "{{urlCheckout}}/api/v1/compras", "host": ["{{urlCheckout}}"], "path": ["api", "v1", "compras"] }
           }
         },
@@ -114,7 +139,7 @@
               { "key": "Idempotency-Key", "value": "{{chaveIdempotencia}}" },
               { "key": "Content-Type", "value": "application/json" }
             ],
-            "body": { "mode": "raw", "raw": "{\n  \"idCliente\": \"cliente-postman-001\",\n  \"emailCliente\": \"cliente.postman@orquestrapay.local\",\n  \"moeda\": \"BRL\",\n  \"pais\": \"BR\",\n  \"identificadorDispositivo\": \"notebook-postman-001\",\n  \"tokenPagamento\": \"tok_aprovado\",\n  \"itens\": [\n    { \"idProduto\": \"{{idProdutoA}}\", \"quantidade\": 2, \"precoUnitario\": 79.90 },\n    { \"idProduto\": \"{{idProdutoB}}\", \"quantidade\": 1, \"precoUnitario\": 39.90 }\n  ]\n}" },
+            "body": { "mode": "raw", "raw": "{\n  \"idCliente\": \"cliente-postman-001\",\n  \"emailCliente\": \"cliente.postman@orquestrapay.local\",\n  \"moeda\": \"BRL\",\n  \"pais\": \"BR\",\n  \"identificadorDispositivo\": \"notebook-postman-001\",\n  \"metodoPagamento\": \"CARTAO\",\n  \"parcelas\": 3,\n  \"tokenPagamento\": \"tok_aprovado\",\n  \"itens\": [\n    { \"idProduto\": \"{{idProdutoA}}\", \"quantidade\": 2, \"precoUnitario\": 79.90 },\n    { \"idProduto\": \"{{idProdutoB}}\", \"quantidade\": 1, \"precoUnitario\": 39.90 }\n  ]\n}" },
             "url": { "raw": "{{urlCheckout}}/api/v1/compras", "host": ["{{urlCheckout}}"], "path": ["api", "v1", "compras"] }
           }
         },
@@ -123,14 +148,14 @@
           "event": [
             { "listen": "prerequest", "script": { "exec": [
               "const tentativa = Number(pm.collectionVariables.get('tentativasSaga') || 0);",
-              "if (tentativa > 0) { setTimeout(() => {}, 750); }"
+              "if (tentativa > 0) { setTimeout(() => {}, 1000); }"
             ], "type": "text/javascript" } },
             { "listen": "test", "script": { "exec": [
               "pm.test('Compra encontrada', () => pm.response.to.have.status(200));",
               "const corpo = pm.response.json();",
               "const tentativa = Number(pm.collectionVariables.get('tentativasSaga') || 0) + 1;",
               "const estadosEmAndamento = ['RECEBIDA','ESTOQUE_RESERVADO','RISCO_APROVADO','PAGAMENTO_AUTORIZADO'];",
-              "if (corpo.status !== 'CONCLUIDA' && estadosEmAndamento.includes(corpo.status) && tentativa < 20) {",
+              "if (corpo.status !== 'CONCLUIDA' && estadosEmAndamento.includes(corpo.status) && tentativa < 60) {",
               "  pm.collectionVariables.set('tentativasSaga', String(tentativa));",
               "  pm.execution.setNextRequest(pm.info.requestName);",
               "} else {",
@@ -162,9 +187,21 @@
         {
           "name": "Consultar partidas dobradas",
           "event": [{ "listen": "test", "script": { "exec": [
-            "pm.test('Transacao contabil balanceada', () => { const c = pm.response.json(); pm.expect(c.totalDebitos).to.eql(c.totalCreditos); pm.expect(c.lancamentos.length).to.eql(2); });"
+            "pm.test('Transacao contabil balanceada e parcelada', () => { const c = pm.response.json(); pm.expect(c.totalDebitos).to.eql(c.totalCreditos); pm.expect(c.lancamentos.length).to.eql(2); pm.expect(c.parcelas.length).to.eql(3); });"
           ], "type": "text/javascript" } }],
           "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlRazao}}/api/v1/transacoes-contabeis/compras/{{idCompra}}", "host": ["{{urlRazao}}"], "path": ["api", "v1", "transacoes-contabeis", "compras", "{{idCompra}}"] } }
+        },
+        {
+          "name": "Liquidar primeira parcela",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Parcela liquidada com auditoria', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('LIQUIDADA'); });"
+          ], "type": "text/javascript" } }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"referencia\": \"repasse-postman-001\"\n}" },
+            "url": { "raw": "{{urlRazao}}/api/v1/transacoes-contabeis/compras/{{idCompra}}/parcelas/1/liquidacao", "host": ["{{urlRazao}}"], "path": ["api", "v1", "transacoes-contabeis", "compras", "{{idCompra}}", "parcelas", "1", "liquidacao"] }
+          }
         },
         {
           "name": "Consultar notificacao",
@@ -197,6 +234,33 @@
             "body": { "mode": "raw", "raw": "{\n  \"registros\": [\n    { \"idPagamento\": \"{{idPagamento}}\", \"valor\": 199.70, \"status\": \"AUTORIZADO\" }\n  ]\n}" },
             "url": { "raw": "{{urlPagamento}}/api/v1/conciliacoes", "host": ["{{urlPagamento}}"], "path": ["api", "v1", "conciliacoes"] }
           }
+        },
+        {
+          "name": "Gerar divergencia controlada",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Divergencia de valor foi identificada', () => { pm.response.to.have.status(200); const c = pm.response.json(); pm.expect(c.divergenciasEncontradas).to.eql(1); pm.expect(c.divergencias[0]).to.include('provedor 199.71'); });"], "type": "text/javascript" } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"registros\": [\n    { \"idPagamento\": \"{{idPagamento}}\", \"valor\": 199.71, \"status\": \"AUTORIZADO\" }\n  ]\n}" },
+            "url": { "raw": "{{urlPagamento}}/api/v1/conciliacoes", "host": ["{{urlPagamento}}"], "path": ["api", "v1", "conciliacoes"] }
+          }
+        },
+        {
+          "name": "Localizar divergencia aberta",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Divergencia aberta foi localizada', () => { pm.response.to.have.status(200); const pagina = pm.response.json(); const item = pagina.itens.find(i => i.idPagamento === pm.collectionVariables.get('idPagamento')); pm.expect(item).to.exist; pm.expect(item.tipo).to.eql('VALOR_DIVERGENTE'); pm.collectionVariables.set('idDivergencia', item.idDivergencia); });"
+          ], "type": "text/javascript" } }],
+          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlPagamento}}/api/v1/conciliacoes/divergencias?status=ABERTA&pagina=0&tamanho=100", "host": ["{{urlPagamento}}"], "path": ["api", "v1", "conciliacoes", "divergencias"], "query": [{ "key": "status", "value": "ABERTA" }, { "key": "pagina", "value": "0" }, { "key": "tamanho", "value": "100" }] } }
+        },
+        {
+          "name": "Resolver divergencia",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Divergencia foi resolvida com auditoria', () => { pm.response.to.have.status(200); const c = pm.response.json(); pm.expect(c.status).to.eql('RESOLVIDA'); pm.expect(c.observacaoResolucao).to.eql('Extrato conferido com o provedor no fluxo Postman'); pm.expect(c.resolvidaEm).to.be.a('string'); });"], "type": "text/javascript" } }],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"RESOLVIDA\",\n  \"observacao\": \"Extrato conferido com o provedor no fluxo Postman\"\n}" },
+            "url": { "raw": "{{urlPagamento}}/api/v1/conciliacoes/divergencias/{{idDivergencia}}", "host": ["{{urlPagamento}}"], "path": ["api", "v1", "conciliacoes", "divergencias", "{{idDivergencia}}"] }
+          }
         }
       ]
     },
@@ -207,7 +271,7 @@
           "name": "Criar compra recusada pelo emissor",
           "event": [
             { "listen": "prerequest", "script": { "exec": ["pm.variables.set('chaveFalha', 'recusa-' + pm.variables.replaceIn('{{$guid}}'));"], "type": "text/javascript" } },
-            { "listen": "test", "script": { "exec": ["pm.test('Compra de recusa aceita pela saga', () => pm.response.to.have.status(202));", "pm.collectionVariables.set('idCompraRecusada', pm.response.json().idCompra);"], "type": "text/javascript" } }
+            { "listen": "test", "script": { "exec": ["pm.test('Compra de recusa aceita pela saga', () => pm.response.to.have.status(202));", "pm.collectionVariables.set('idCompraRecusada', pm.response.json().idCompra);", "pm.collectionVariables.unset('tentativasRecusa');"], "type": "text/javascript" } }
           ],
           "request": {
             "method": "POST",
@@ -217,10 +281,30 @@
           }
         },
         {
+          "name": "Aguardar recusa da compra",
+          "event": [
+            { "listen": "prerequest", "script": { "exec": ["if (pm.collectionVariables.get('tentativasRecusa')) { setTimeout(() => {}, 750); }"], "type": "text/javascript" } },
+            { "listen": "test", "script": { "exec": [
+              "pm.test('Compra recusada encontrada', () => pm.response.to.have.status(200));",
+              "const corpo = pm.response.json();",
+              "const tentativa = Number(pm.collectionVariables.get('tentativasRecusa') || 0) + 1;",
+              "const estadosTerminais = ['RECUSADA', 'CONCLUIDA', 'COMPENSADA'];",
+              "if (!estadosTerminais.includes(corpo.status) && tentativa < 40) { pm.collectionVariables.set('tentativasRecusa', String(tentativa)); pm.execution.setNextRequest(pm.info.requestName); }",
+              "else { pm.collectionVariables.unset('tentativasRecusa'); pm.test('Saga terminou como recusada', () => pm.expect(corpo.status).to.eql('RECUSADA')); }"
+            ], "type": "text/javascript" } }
+          ],
+          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlCheckout}}/api/v1/compras/{{idCompraRecusada}}", "host": ["{{urlCheckout}}"], "path": ["api", "v1", "compras", "{{idCompraRecusada}}"] } }
+        },
+        {
+          "name": "Comprovar pagamento recusado",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Pagamento foi recusado sem cobranca', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('RECUSADO'); });"], "type": "text/javascript" } }],
+          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlPagamento}}/api/v1/pagamentos/compras/{{idCompraRecusada}}", "host": ["{{urlPagamento}}"], "path": ["api", "v1", "pagamentos", "compras", "{{idCompraRecusada}}"] } }
+        },
+        {
           "name": "Criar compra que exige compensacao",
           "event": [
             { "listen": "prerequest", "script": { "exec": ["pm.variables.set('chaveCompensacao', 'compensacao-' + pm.variables.replaceIn('{{$guid}}'));"], "type": "text/javascript" } },
-            { "listen": "test", "script": { "exec": ["pm.test('Compra de compensacao aceita pela saga', () => pm.response.to.have.status(202));", "pm.collectionVariables.set('idCompraCompensada', pm.response.json().idCompra);"], "type": "text/javascript" } }
+            { "listen": "test", "script": { "exec": ["pm.test('Compra de compensacao aceita pela saga', () => pm.response.to.have.status(202));", "pm.collectionVariables.set('idCompraCompensada', pm.response.json().idCompra);", "pm.collectionVariables.unset('tentativasCompensacao');"], "type": "text/javascript" } }
           ],
           "request": {
             "method": "POST",
@@ -228,6 +312,159 @@
             "body": { "mode": "raw", "raw": "{\n  \"idCliente\": \"cliente-compensacao\",\n  \"emailCliente\": \"compensacao@orquestrapay.local\",\n  \"moeda\": \"XXX\",\n  \"pais\": \"BR\",\n  \"identificadorDispositivo\": \"dispositivo-compensacao\",\n  \"tokenPagamento\": \"tok_aprovado\",\n  \"itens\": [{ \"idProduto\": \"{{idProdutoB}}\", \"quantidade\": 1, \"precoUnitario\": 29.90 }]\n}" },
             "url": { "raw": "{{urlCheckout}}/api/v1/compras", "host": ["{{urlCheckout}}"], "path": ["api", "v1", "compras"] }
           }
+        },
+        {
+          "name": "Aguardar compensacao da compra",
+          "event": [
+            { "listen": "prerequest", "script": { "exec": ["if (pm.collectionVariables.get('tentativasCompensacao')) { setTimeout(() => {}, 750); }"], "type": "text/javascript" } },
+            { "listen": "test", "script": { "exec": [
+              "pm.test('Compra em compensacao encontrada', () => pm.response.to.have.status(200));",
+              "const corpo = pm.response.json();",
+              "const tentativa = Number(pm.collectionVariables.get('tentativasCompensacao') || 0) + 1;",
+              "const estadosTerminais = ['COMPENSADA', 'CONCLUIDA', 'RECUSADA'];",
+              "if (!estadosTerminais.includes(corpo.status) && tentativa < 60) { pm.collectionVariables.set('tentativasCompensacao', String(tentativa)); pm.execution.setNextRequest(pm.info.requestName); }",
+              "else { pm.collectionVariables.unset('tentativasCompensacao'); pm.test('Saga concluiu a compensacao', () => pm.expect(corpo.status).to.eql('COMPENSADA')); }"
+            ], "type": "text/javascript" } }
+          ],
+          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlCheckout}}/api/v1/compras/{{idCompraCompensada}}", "host": ["{{urlCheckout}}"], "path": ["api", "v1", "compras", "{{idCompraCompensada}}"] } }
+        },
+        {
+          "name": "Comprovar estorno da compensacao",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Pagamento foi estornado no provedor original', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('ESTORNADO'); });"], "type": "text/javascript" } }],
+          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlPagamento}}/api/v1/pagamentos/compras/{{idCompraCompensada}}", "host": ["{{urlPagamento}}"], "path": ["api", "v1", "pagamentos", "compras", "{{idCompraCompensada}}"] } }
+        },
+        {
+          "name": "Comprovar devolucao do estoque",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Estoque reservado foi devolvido', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().quantidadeDisponivel).to.eql(99); });"], "type": "text/javascript" } }],
+          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlEstoque}}/api/v1/estoques/{{idProdutoB}}", "host": ["{{urlEstoque}}"], "path": ["api", "v1", "estoques", "{{idProdutoB}}"] } }
+        }
+      ]
+    },
+    {
+      "name": "04 - Roteamento e fallback",
+      "item": [
+        {
+          "name": "Criar compra com falha no provedor principal",
+          "event": [
+            { "listen": "prerequest", "script": { "exec": ["pm.variables.set('chaveFallback', 'fallback-' + pm.variables.replaceIn('{{$guid}}'));"] , "type": "text/javascript" } },
+            { "listen": "test", "script": { "exec": [
+              "pm.test('Compra de fallback aceita', () => pm.response.to.have.status(202));",
+              "pm.collectionVariables.set('idCompraFallback', pm.response.json().idCompra);",
+              "pm.collectionVariables.unset('tentativasFallback');"
+            ], "type": "text/javascript" } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }, { "key": "Idempotency-Key", "value": "{{chaveFallback}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"idCliente\": \"cliente-fallback\",\n  \"emailCliente\": \"fallback@orquestrapay.local\",\n  \"moeda\": \"BRL\",\n  \"pais\": \"BR\",\n  \"identificadorDispositivo\": \"dispositivo-fallback\",\n  \"tokenPagamento\": \"tok_fallback\",\n  \"metodoPagamento\": \"CARTAO\",\n  \"parcelas\": 1,\n  \"itens\": [{ \"idProduto\": \"{{idProdutoA}}\", \"quantidade\": 1, \"precoUnitario\": 59.90 }]\n}" },
+            "url": { "raw": "{{urlCheckout}}/api/v1/compras", "host": ["{{urlCheckout}}"], "path": ["api", "v1", "compras"] }
+          }
+        },
+        {
+          "name": "Aguardar conclusao do fallback",
+          "event": [
+            { "listen": "prerequest", "script": { "exec": ["if (pm.collectionVariables.get('tentativasFallback')) { setTimeout(() => {}, 750); }"] , "type": "text/javascript" } },
+            { "listen": "test", "script": { "exec": [
+              "pm.test('Compra de fallback encontrada', () => pm.response.to.have.status(200));",
+              "const corpo = pm.response.json();",
+              "const tentativa = Number(pm.collectionVariables.get('tentativasFallback') || 0) + 1;",
+              "if (corpo.status !== 'CONCLUIDA' && tentativa < 30) { pm.collectionVariables.set('tentativasFallback', String(tentativa)); pm.execution.setNextRequest(pm.info.requestName); }",
+              "else { pm.collectionVariables.unset('tentativasFallback'); pm.test('Fallback concluiu a saga', () => pm.expect(corpo.status).to.eql('CONCLUIDA')); }"
+            ], "type": "text/javascript" } }
+          ],
+          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlCheckout}}/api/v1/compras/{{idCompraFallback}}", "host": ["{{urlCheckout}}"], "path": ["api", "v1", "compras", "{{idCompraFallback}}"] } }
+        },
+        {
+          "name": "Comprovar provedor de contingencia",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "pm.test('Pagamento foi roteado para contingencia', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().provedor).to.eql('contingencia'); });"
+          ], "type": "text/javascript" } }],
+          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlPagamento}}/api/v1/pagamentos/compras/{{idCompraFallback}}", "host": ["{{urlPagamento}}"], "path": ["api", "v1", "pagamentos", "compras", "{{idCompraFallback}}"] } }
+        }
+      ]
+    },
+    {
+      "name": "05 - PIX assincrono",
+      "item": [
+        {
+          "name": "Criar compra PIX",
+          "event": [
+            { "listen": "prerequest", "script": { "exec": ["pm.variables.set('chavePix', 'pix-' + pm.variables.replaceIn('{{$guid}}'));"] , "type": "text/javascript" } },
+            { "listen": "test", "script": { "exec": [
+              "pm.test('Compra PIX aceita', () => pm.response.to.have.status(202));",
+              "pm.collectionVariables.set('idCompraPix', pm.response.json().idCompra);",
+              "pm.collectionVariables.unset('tentativasPix');"
+            ], "type": "text/javascript" } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }, { "key": "Idempotency-Key", "value": "{{chavePix}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"idCliente\": \"cliente-pix\",\n  \"emailCliente\": \"pix@orquestrapay.local\",\n  \"moeda\": \"BRL\",\n  \"pais\": \"BR\",\n  \"identificadorDispositivo\": \"dispositivo-pix\",\n  \"metodoPagamento\": \"PIX\",\n  \"parcelas\": 1,\n  \"itens\": [{ \"idProduto\": \"{{idProdutoB}}\", \"quantidade\": 1, \"precoUnitario\": 34.90 }]\n}" },
+            "url": { "raw": "{{urlCheckout}}/api/v1/compras", "host": ["{{urlCheckout}}"], "path": ["api", "v1", "compras"] }
+          }
+        },
+        {
+          "name": "Aguardar cobranca PIX",
+          "event": [
+            { "listen": "prerequest", "script": { "exec": ["if (pm.collectionVariables.get('tentativasPix')) { setTimeout(() => {}, 500); }"] , "type": "text/javascript" } },
+            { "listen": "test", "script": { "exec": [
+              "const tentativa = Number(pm.collectionVariables.get('tentativasPix') || 0) + 1;",
+              "if (pm.response.code === 404 && tentativa < 30) { pm.collectionVariables.set('tentativasPix', String(tentativa)); pm.execution.setNextRequest(pm.info.requestName); }",
+              "else { const corpo = pm.response.json(); if (corpo.status !== 'AGUARDANDO_CONFIRMACAO' && tentativa < 30) { pm.collectionVariables.set('tentativasPix', String(tentativa)); pm.execution.setNextRequest(pm.info.requestName); } else { pm.collectionVariables.unset('tentativasPix'); pm.test('Cobranca PIX possui txid e copia e cola', () => { pm.response.to.have.status(200); pm.expect(corpo.status).to.eql('AGUARDANDO_CONFIRMACAO'); pm.expect(corpo.txid).to.be.ok; pm.expect(corpo.copiaColaPix).to.be.ok; pm.expect(['principal', 'contingencia']).to.include(corpo.provedor); }); pm.collectionVariables.set('txidPix', corpo.txid); const urlProvedor = corpo.provedor === 'contingencia' ? pm.environment.get('urlProvedorContingencia') : pm.environment.get('urlProvedorPrincipal'); pm.collectionVariables.set('urlProvedorPix', urlProvedor); } }"
+            ], "type": "text/javascript" } }
+          ],
+          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlPagamento}}/api/v1/pagamentos/compras/{{idCompraPix}}", "host": ["{{urlPagamento}}"], "path": ["api", "v1", "pagamentos", "compras", "{{idCompraPix}}"] } }
+        },
+        {
+          "name": "Confirmar PIX no provedor",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Provedor aceitou confirmacao PIX', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-Provedor-Api-Key", "value": "{{chaveApiProvedor}}" }],
+            "url": { "raw": "{{urlProvedorPix}}/api/v1/cobrancas/pix/{{txidPix}}/confirmacoes", "host": ["{{urlProvedorPix}}"], "path": ["api", "v1", "cobrancas", "pix", "{{txidPix}}", "confirmacoes"] }
+          }
+        },
+        {
+          "name": "Aguardar conclusao da compra PIX",
+          "event": [
+            { "listen": "prerequest", "script": { "exec": ["setTimeout(() => {}, 500);"] , "type": "text/javascript" } },
+            { "listen": "test", "script": { "exec": [
+              "const corpo = pm.response.json(); const tentativa = Number(pm.collectionVariables.get('tentativasPixConclusao') || 0) + 1;",
+              "if (corpo.status !== 'CONCLUIDA' && tentativa < 30) { pm.collectionVariables.set('tentativasPixConclusao', String(tentativa)); pm.execution.setNextRequest(pm.info.requestName); }",
+              "else { pm.collectionVariables.unset('tentativasPixConclusao'); pm.test('Compra PIX concluida', () => pm.expect(corpo.status).to.eql('CONCLUIDA')); }"
+            ], "type": "text/javascript" } }
+          ],
+          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlCheckout}}/api/v1/compras/{{idCompraPix}}", "host": ["{{urlCheckout}}"], "path": ["api", "v1", "compras", "{{idCompraPix}}"] } }
+        }
+      ]
+    },
+    {
+      "name": "06 - Operacao e auditoria",
+      "item": [
+        {
+          "name": "Listar execucoes de conciliacao",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Historico de conciliacao disponivel', () => { pm.response.to.have.status(200); pm.expect(pm.response.json()).to.be.an('array'); });"], "type": "text/javascript" } }],
+          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlPagamento}}/api/v1/conciliacoes", "host": ["{{urlPagamento}}"], "path": ["api", "v1", "conciliacoes"] } }
+        },
+        {
+          "name": "Listar divergencias operacionais",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Paginacao de divergencias valida', () => { pm.response.to.have.status(200); pm.expect(pm.response.json()).to.have.property('itens'); });"], "type": "text/javascript" } }],
+          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlPagamento}}/api/v1/conciliacoes/divergencias", "host": ["{{urlPagamento}}"], "path": ["api", "v1", "conciliacoes", "divergencias"] } }
+        },
+        {
+          "name": "Listar entregas de webhook",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Auditoria de webhooks disponivel', () => { pm.response.to.have.status(200); pm.expect(pm.response.json()).to.have.property('itens'); });"], "type": "text/javascript" } }],
+          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlNotificacao}}/api/v1/webhooks/entregas", "host": ["{{urlNotificacao}}"], "path": ["api", "v1", "webhooks", "entregas"] } }
+        },
+        {
+          "name": "Comprovar recebimento no destino",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Destino recebeu webhook com assinatura', () => { pm.response.to.have.status(200); const requisicoes = pm.response.json().requests; pm.expect(requisicoes.length).to.be.above(0); const headers = requisicoes[0].request.headers; pm.expect(headers).to.have.property('X-Orquestra-Signature'); });"], "type": "text/javascript" } }],
+          "request": { "method": "GET", "auth": { "type": "noauth" }, "url": { "raw": "{{urlReceptorWebhook}}/__admin/requests", "host": ["{{urlReceptorWebhook}}"], "path": ["__admin", "requests"] } }
+        },
+        {
+          "name": "Consultar quarentena de eventos",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Quarentena operacional acessivel', () => { pm.response.to.have.status(200); pm.expect(pm.response.json()).to.have.property('itens'); });"], "type": "text/javascript" } }],
+          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlPagamento}}/api/v1/admin/quarentena", "host": ["{{urlPagamento}}"], "path": ["api", "v1", "admin", "quarentena"] } }
         }
       ]
     }

@@ -107,21 +107,35 @@ FROM notificacao
 ORDER BY id_compra;
 '@) 'notificacao'
 
+$comprasFinais = @{}
+foreach ($idCompra in $compras.Keys) {
+    if ($compras[$idCompra][3] -in @('CONCLUIDA', 'RECUSADA', 'COMPENSADA')) {
+        $comprasFinais[$idCompra] = $compras[$idCompra]
+    }
+}
+
 Write-Host '2/5 Comparando compras, empresas, valores e vinculos...' -ForegroundColor Cyan
 Garantir-MesmasChaves $compras $reservas 'As compras e as reservas nao possuem os mesmos identificadores.'
-Garantir-MesmasChaves $compras $notificacoes 'As compras e as notificacoes nao possuem os mesmos identificadores.'
+Garantir-MesmasChaves $comprasFinais $notificacoes 'As compras finalizadas e as notificacoes nao possuem os mesmos identificadores.'
 
 foreach ($idCompra in $compras.Keys) {
     $compra = $compras[$idCompra]
     $reserva = $reservas[$idCompra]
-    $notificacao = $notificacoes[$idCompra]
     $idEmpresa = $compra[1]
     $valor = Converter-Decimal $compra[2]
+    $finalizada = $comprasFinais.ContainsKey($idCompra)
 
     Garantir ($reserva[1] -eq $idEmpresa) "Empresa divergente no estoque da compra $idCompra."
     Garantir ($reserva[3] -eq $compra[4]) "Reserva divergente na compra $idCompra."
-    Garantir ($notificacao[1] -eq $idEmpresa) "Empresa divergente na notificacao da compra $idCompra."
-    Garantir ($notificacao[2] -eq 'ENVIADA') "Notificacao nao enviada para a compra $idCompra."
+    if ($finalizada) {
+        $notificacao = $notificacoes[$idCompra]
+        Garantir ($notificacao[1] -eq $idEmpresa) "Empresa divergente na notificacao da compra $idCompra."
+        Garantir ($notificacao[2] -eq 'ENVIADA') "Notificacao nao enviada para a compra $idCompra."
+    }
+    else {
+        Garantir (-not $notificacoes.ContainsKey($idCompra)) `
+            "Compra em andamento $idCompra recebeu notificacao final prematuramente."
+    }
 
     if ($reserva[2] -eq 'RECUSADA') {
         Garantir ($compra[3] -eq 'RECUSADA') "Compra $idCompra deveria estar recusada por estoque."
@@ -149,6 +163,16 @@ foreach ($idCompra in $compras.Keys) {
     $pagamento = $pagamentos[$idCompra]
     Garantir ($pagamento[1] -eq $idEmpresa) "Empresa divergente no pagamento da compra $idCompra."
     Garantir ((Converter-Decimal $pagamento[2]) -eq $valor) "Valor divergente no pagamento da compra $idCompra."
+
+    if ($pagamento[3] -in @('PENDENTE', 'PROCESSANDO', 'AGUARDANDO_CONFIRMACAO', 'FALHA_TECNICA')) {
+        Garantir ($compra[3] -eq 'AGUARDANDO_PAGAMENTO') `
+            "Pagamento em andamento da compra $idCompra nao corresponde ao estado do checkout."
+        Garantir ($reserva[2] -eq 'RESERVADA') `
+            "Compra em pagamento $idCompra nao manteve a reserva ativa."
+        Garantir (-not $transacoes.ContainsKey($idCompra)) `
+            "Compra em pagamento $idCompra chegou prematuramente a razao."
+        continue
+    }
 
     switch ($pagamento[3]) {
         'RECUSADO' {
@@ -258,6 +282,8 @@ Write-Host ''
 Write-Host 'Consistencia distribuida aprovada.' -ForegroundColor Green
 [pscustomobject]@{
     compras = $compras.Count
+    comprasFinalizadas = $comprasFinais.Count
+    comprasEmAndamento = $compras.Count - $comprasFinais.Count
     reservas = $reservas.Count
     analisesRisco = $analises.Count
     pagamentos = $pagamentos.Count

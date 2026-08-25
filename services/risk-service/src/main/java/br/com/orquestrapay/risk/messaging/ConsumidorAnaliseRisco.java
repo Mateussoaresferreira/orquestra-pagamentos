@@ -16,7 +16,7 @@ public class ConsumidorAnaliseRisco {
         this.risco = risco;
     }
 
-    @KafkaListener(topics = "${orquestrapay.eventos.topico}")
+    @KafkaListener(topics = "${orquestrapay.eventos.topicos.risco}")
     public void receber(EventoSaga evento) {
         if (ANALISAR_RISCO.equals(evento.getTipo())) {
             risco.analisar(evento);

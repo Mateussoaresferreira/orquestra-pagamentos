@@ -1,6 +1,81 @@
 {{- if .Values.autoscalonamento.habilitado }}
+{{- if .Values.autoscalonamento.keda.habilitado }}
+{{- if .Values.global.kafka.autenticacaoIam }}
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: orquestrapay-msk-iam
+  labels:
+    {{- include "orquestrapay.rotulos" . | nindent 4 }}
+spec:
+  podIdentity:
+    provider: aws
+---
+{{- end }}
 {{- range .Values.servicos }}
-{{- if gt (int .replicas) 1 }}
+{{- if and .habilitado .usaKafka }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ .nome }}
+  labels:
+    {{- include "orquestrapay.rotulos" $ | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: {{ .nome }}
+  pollingInterval: {{ $.Values.autoscalonamento.keda.intervaloConsultaSegundos }}
+  cooldownPeriod: {{ $.Values.autoscalonamento.keda.periodoResfriamentoSegundos }}
+  minReplicaCount: {{ $.Values.autoscalonamento.minimoReplicas }}
+  maxReplicaCount: {{ $.Values.autoscalonamento.maximoReplicas }}
+  fallback:
+    failureThreshold: {{ $.Values.autoscalonamento.keda.falhasParaFallback }}
+    replicas: {{ $.Values.autoscalonamento.keda.replicasFallback }}
+  advanced:
+    restoreToOriginalReplicaCount: true
+    horizontalPodAutoscalerConfig:
+      name: {{ .nome }}
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          policies:
+            - { type: Percent, value: 100, periodSeconds: 60 }
+            - { type: Pods, value: 4, periodSeconds: 60 }
+          selectPolicy: Max
+        scaleDown:
+          stabilizationWindowSeconds: 300
+  triggers:
+    - type: apache-kafka
+      metadata:
+        bootstrapServers: {{ $.Values.global.kafka.servidores | quote }}
+        consumerGroup: {{ .grupoKafka | quote }}
+        topic: {{ index $.Values.global.kafka.topicos .chave | quote }}
+        lagThreshold: {{ .limiteLagKafka | quote }}
+        activationLagThreshold: {{ $.Values.autoscalonamento.keda.limiteAtivacaoLag | quote }}
+        offsetResetPolicy: earliest
+        allowIdleConsumers: "false"
+        limitToPartitionsWithLag: "true"
+        ensureEvenDistributionOfPartitions: "true"
+        fullMetadata: "false"
+        {{- if $.Values.global.kafka.autenticacaoIam }}
+        awsRegion: {{ $.Values.global.kafka.regiaoAws | quote }}
+        sasl: oauthbearer
+        saslTokenProvider: aws_msk_iam
+        tls: enable
+        {{- end }}
+      {{- if $.Values.global.kafka.autenticacaoIam }}
+      authenticationRef:
+        name: orquestrapay-msk-iam
+      {{- end }}
+    - type: cpu
+      metricType: Utilization
+      metadata:
+        value: {{ $.Values.autoscalonamento.cpuMedia | quote }}
+---
+{{- end }}
+{{- end }}
+{{- else }}
+{{- range .Values.servicos }}
+{{- if and .habilitado (gt (int .replicas) 1) }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -13,6 +88,12 @@ spec:
   minReplicas: {{ $.Values.autoscalonamento.minimoReplicas }}
   maxReplicas: {{ $.Values.autoscalonamento.maximoReplicas }}
   behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - { type: Percent, value: 100, periodSeconds: 60 }
+        - { type: Pods, value: 4, periodSeconds: 60 }
+      selectPolicy: Max
     scaleDown:
       stabilizationWindowSeconds: 300
   metrics:
@@ -23,6 +104,7 @@ spec:
           type: Utilization
           averageUtilization: {{ $.Values.autoscalonamento.cpuMedia }}
 ---
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

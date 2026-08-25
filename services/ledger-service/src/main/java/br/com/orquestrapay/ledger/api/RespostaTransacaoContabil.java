@@ -14,5 +14,8 @@ public record RespostaTransacaoContabil(
         String status,
         String motivo,
         Instant criadaEm,
-        List<Lancamento> lancamentos) {
+        BigDecimal totalDebitos,
+        BigDecimal totalCreditos,
+        List<Lancamento> lancamentos,
+        List<ParcelaRecebivel> parcelas) {
 }

@@ -73,6 +73,10 @@ class TesteServicoRisco {
                 POLITICA);
         servico.analisar(evento);
 
+        verify(repositorio).bloquearJanelasDeVelocidade(
+                idEmpresa,
+                "cliente-42",
+                "dispositivo-42");
         verify(repositorio).adicionar(
                 idEmpresa,
                 idCompra,

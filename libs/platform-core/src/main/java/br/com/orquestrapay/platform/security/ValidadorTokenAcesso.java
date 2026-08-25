@@ -1,5 +1,8 @@
 package br.com.orquestrapay.platform.security;
 
+import java.util.Collection;
+import java.util.Set;
+
 import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
@@ -16,10 +19,14 @@ public class ValidadorTokenAcesso implements OAuth2TokenValidator<Jwt> {
             "O token nao foi emitido para este cliente",
             null);
 
-    private final String clienteId;
+    private final Set<String> clientesId;
 
     public ValidadorTokenAcesso(String clienteId) {
-        this.clienteId = clienteId;
+        this(clienteId == null || clienteId.isBlank() ? Set.of() : Set.of(clienteId));
+    }
+
+    public ValidadorTokenAcesso(Collection<String> clientesId) {
+        this.clientesId = clientesId == null ? Set.of() : Set.copyOf(clientesId);
     }
 
     @Override
@@ -27,9 +34,10 @@ public class ValidadorTokenAcesso implements OAuth2TokenValidator<Jwt> {
         if (!"access".equals(jwt.getClaimAsString("token_use"))) {
             return OAuth2TokenValidatorResult.failure(ERRO_TIPO_TOKEN);
         }
-        if (clienteId != null && !clienteId.isBlank()) {
-            boolean clienteCompativel = clienteId.equals(jwt.getClaimAsString("client_id"))
-                    || jwt.getAudience().contains(clienteId);
+        if (!clientesId.isEmpty()) {
+            String clienteToken = jwt.getClaimAsString("client_id");
+            boolean clienteCompativel = clienteToken != null && clientesId.contains(clienteToken)
+                    || jwt.getAudience().stream().anyMatch(clientesId::contains);
             if (!clienteCompativel) {
                 return OAuth2TokenValidatorResult.failure(ERRO_CLIENTE);
             }

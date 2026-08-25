@@ -1,7 +1,6 @@
 package br.com.orquestrapay.platform.config;
 
 import br.com.orquestrapay.contracts.EventoSaga;
-import br.com.orquestrapay.platform.event.PropriedadesEventos;
 import br.com.orquestrapay.platform.event.MetricasEventos;
 import org.apache.kafka.common.TopicPartition;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -17,14 +16,14 @@ public class ConfiguracaoFalhasEventos {
     @Bean
     DefaultErrorHandler tratadorFalhasEventos(
             KafkaTemplate<String, EventoSaga> kafka,
-            PropriedadesEventos propriedades,
             MetricasEventos metricas) {
         var recuperador = new DeadLetterPublishingRecoverer(
                 kafka,
                 (registro, excecao) -> {
-                    metricas.registrarEnvioDlt();
+                    String topicoDlt = registro.topic() + ".dlt";
+                    metricas.registrarEnvioDlt(topicoDlt);
                     return new TopicPartition(
-                            propriedades.topico() + ".dlt",
+                            topicoDlt,
                             registro.partition());
                 });
         var espera = new ExponentialBackOff(500, 2.0);

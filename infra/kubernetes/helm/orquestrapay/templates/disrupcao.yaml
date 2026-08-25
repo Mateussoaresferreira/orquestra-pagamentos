@@ -1,5 +1,5 @@
 {{- range .Values.servicos }}
-{{- if gt (int .replicas) 1 }}
+{{- if and .habilitado (gt (int .replicas) 1) }}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:

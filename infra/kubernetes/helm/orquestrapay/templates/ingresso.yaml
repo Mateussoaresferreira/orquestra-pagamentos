@@ -1,5 +1,6 @@
 {{- if .Values.ingresso.habilitado }}
 {{- $certificadoArn := required "ingresso.certificadoArn e obrigatorio quando o ingresso publico esta habilitado" .Values.ingresso.certificadoArn }}
+{{- $wafAclArn := required "ingresso.wafAclArn e obrigatorio quando o ingresso publico esta habilitado" .Values.ingresso.wafAclArn }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -11,12 +12,19 @@ metadata:
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
     alb.ingress.kubernetes.io/ssl-redirect: "443"
     alb.ingress.kubernetes.io/ssl-policy: {{ .Values.ingresso.politicaTls | quote }}
+    alb.ingress.kubernetes.io/wafv2-acl-arn: {{ $wafAclArn | quote }}
 spec:
   ingressClassName: {{ .Values.ingresso.classe }}
   rules:
     - host: {{ .Values.ingresso.host }}
       http:
         paths:
+          - path: /api/v1/webhooks/provedores
+            pathType: Exact
+            backend:
+              service:
+                name: servico-pagamento
+                port: { number: 8080 }
           - path: /
             pathType: Prefix
             backend:

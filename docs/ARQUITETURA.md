@@ -11,9 +11,9 @@ Uma compra atravessa recursos que não compartilham a mesma transação: estoque
 | Checkout | compra, itens, idempotência e histórico | qual é a próxima etapa da saga |
 | Estoque | saldos, reservas e itens reservados | reservar ou recusar; liberar ao compensar |
 | Risco | análises, sinais e pontuação | aprovar ou reprovar uma compra |
-| Pagamento | autorizações, estornos e conciliações | autorizar, recusar ou estornar |
-| Razão | transações e lançamentos | aceitar somente partidas balanceadas |
-| Notificação | fila e tentativas de envio | comunicar o estado final sem bloquear a compra |
+| Pagamento | operações, provedores, PIX, callbacks e conciliações | rotear, autorizar, aguardar ou estornar |
+| Razão | transações, lançamentos e recebíveis | aceitar partidas balanceadas e agendar parcelas |
+| Notificação | mensagens e webhooks empresariais | comunicar o estado final sem bloquear a compra |
 
 Nenhum serviço consulta diretamente as tabelas de outro serviço.
 
@@ -34,6 +34,7 @@ sequenceDiagram
     participant Estoque
     participant Risco
     participant Pagamento
+    participant FilaPagamento as Fila de pagamento
     participant Provedor
     participant Razao as Razão
     participant Notificacao as Notificação
@@ -50,7 +51,8 @@ sequenceDiagram
     Kafka->>Checkout: RISCO_APROVADO
     Checkout->>Kafka: AUTORIZAR_PAGAMENTO
     Kafka->>Pagamento: AUTORIZAR_PAGAMENTO
-    Pagamento->>Provedor: autorizar
+    Pagamento->>FilaPagamento: gravar operação durável
+    FilaPagamento->>Provedor: autorizar fora da transação
     Provedor-->>Pagamento: autorização
     Pagamento->>Kafka: PAGAMENTO_AUTORIZADO
     Kafka->>Checkout: PAGAMENTO_AUTORIZADO
@@ -85,6 +87,40 @@ stateDiagram-v2
     COMPENSANDO --> COMPENSADA: estorno e liberação concluídos
 ```
 
+## Pagamentos síncronos e assíncronos
+
+O consumo do evento grava o pagamento e uma operação durável na mesma
+transação. Um trabalhador reivindica operações com `SKIP LOCKED`, chama o
+provedor fora da transação e persiste o resultado com um token de lease. Isso
+evita manter conexão JDBC aberta durante I/O remoto e permite múltiplas
+instâncias do serviço.
+
+No cartão, uma falha técnica no provedor principal abre espaço para o provedor
+de contingência; uma recusa legítima do emissor é resultado de negócio e não
+dispara fallback. Bulkheads isolam chamadas simultâneas e uma cota distribuída
+no Redis limita a soma de todas as réplicas por adquirente. No PIX, a criação
+retorna `txid`, copia e cola, QR Code e
+prazo. O pagamento fica `AGUARDANDO_CONFIRMACAO` até receber callback HMAC
+válido, idempotente e dentro da janela temporal. PIX vencido é encerrado por um
+trabalhador periódico.
+
+## Parcelamento e razão
+
+O número de parcelas acompanha a compra até a escrituração. A razão distribui
+o total em centavos, atribui eventual resto às primeiras parcelas e garante no
+banco que a soma da agenda seja igual ao valor da transação. Valor, número e
+vencimento são imutáveis; a liquidação é idempotente por referência e deixa
+auditoria própria.
+
+## Operação e recuperação
+
+- o watchdog do checkout republica a etapa esperada de sagas inativas;
+- eventos que esgotam tentativas entram em quarentena auditável;
+- webhooks empresariais possuem lease, HMAC, backoff e falha definitiva;
+- a conciliação registra execuções, divergências e tratamento operacional;
+- métricas distinguem provedor escolhido, fallback, cota, saturação, PIX
+  expirado e falhas de entrega.
+
 ## Garantias de consistência
 
 1. A mesma chave de idempotência e o mesmo corpo retornam a compra existente.
@@ -95,12 +131,46 @@ stateDiagram-v2
 6. Autorizações e estornos usam identificadores estáveis no provedor.
 7. Uma transação contábil só fecha quando débitos e créditos possuem o mesmo total.
 8. Eventos esgotados seguem para quarentena/DLT em vez de serem ignorados.
+9. Chamadas externas nunca permanecem dentro da transação de banco.
+10. Callback PIX e webhook empresarial são autenticados e idempotentes.
+11. A soma das parcelas sempre coincide com o total contábil.
 
 ## Outbox e inbox
 
-O produtor não publica diretamente durante a transação de negócio. Ele insere `evento_saida`; um publicador posterior envia o envelope Avro ao Kafka e marca a linha como publicada. Uma queda entre envio e confirmação pode duplicar a mensagem, portanto a entrega é **pelo menos uma vez**.
+O produtor não publica diretamente durante a transação de negócio. Ele insere
+`evento_saida`; um publicador posterior envia o envelope Avro ao Kafka e marca
+a linha como publicada. O repositório reivindica apenas o evento não publicado
+mais antigo de cada compra. O publicador mantém os eventos da mesma compra em
+sequência, processa compras diferentes em paralelo com concorrência limitada e
+confirma o lote enviado em uma única transação local. Isso preserva ordem sem
+criar uma transação JDBC por confirmação.
+
+Uma queda entre envio ao Kafka e confirmação no PostgreSQL pode duplicar a
+mensagem, portanto a entrega continua sendo **pelo menos uma vez**.
+
+A [ADR 0005](adr/0005-publicacao-outbox-por-polling.md) mantém o polling nesta
+versão e define métricas objetivas para reavaliar CDC com Debezium, sem adicionar
+seis conectores antes de existir um gargalo medido.
 
 O consumidor tenta inserir o par evento/consumidor em `evento_processado`. Se ele já existir, encerra sem repetir o efeito. O resultado observado é efetivamente idempotente, sem prometer “exatamente uma vez” entre bancos e broker.
+
+Os comandos e resultados não dividem mais um tópico global. Estoque, risco,
+pagamento, razão, notificação e checkout possuem tópicos próprios, além de uma
+DLT por domínio. Isso evita que cada consumidor leia e descarte eventos alheios,
+permite escalar cada atraso de forma independente e reduz rebalances sem relação
+com o serviço afetado.
+
+## Retenção operacional
+
+A inbox é preservada por 90 dias, prazo que precisa permanecer maior que a
+retenção do Kafka somada à maior janela de replay operacional. Eventos já
+publicados ficam sete dias na outbox. Quarentena e sua auditoria ficam 365 dias,
+enquanto chaves HTTP de idempotência ficam 90 dias. Compras, histórico da saga,
+lançamentos e demais registros de negócio não são removidos por esse processo.
+
+Cada limpeza usa lotes de até mil linhas e `FOR UPDATE SKIP LOCKED`. Assim,
+réplicas concorrentes não disputam o mesmo lote e nenhuma mensagem pendente ou
+auditoria ainda retida é removida.
 
 ## Ordenação e particionamento
 
@@ -125,4 +195,9 @@ Métricas de domínio complementam as métricas HTTP:
 
 ## Execução local e cloud
 
-O Compose oferece dependências autocontidas e segurança desligada para desenvolvimento. A arquitetura de referência cloud usa EKS, RDS, ElastiCache, MSK Serverless, Cognito, ECR e Secrets Manager. Os mesmos serviços mudam apenas por configuração.
+O Compose oferece dependências autocontidas e segurança desligada para
+desenvolvimento. A arquitetura de referência cloud usa EKS, KEDA, Karpenter,
+RDS Proxy, RDS PostgreSQL, ElastiCache, MSK Serverless, Cognito, ECR e Secrets
+Manager. KEDA escala cada consumidor por CPU e lag do seu tópico; Karpenter cria
+capacidade Spot ou sob demanda quando os novos pods não cabem. Os mesmos
+serviços mudam apenas por configuração.

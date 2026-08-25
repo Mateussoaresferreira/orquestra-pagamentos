@@ -80,6 +80,12 @@ class TesteIntegracaoRepositorioPagamentos {
                 "VALOR_DIVERGENTE",
                 "Valor do provedor divergiu",
                 agora.plusSeconds(2));
+        repositorio.registrarDivergencia(
+                idEmpresa,
+                idPagamento,
+                "VALOR_DIVERGENTE",
+                "Valor do provedor continua divergente",
+                agora.plusSeconds(3));
 
         assertThat(repositorio.buscar(idEmpresa, idCompra).orElseThrow().status()).isEqualTo("ESTORNADO");
         assertThat(banco.sql("SELECT COUNT(*) FROM tentativa_pagamento WHERE id_pagamento = :id")
@@ -90,5 +96,30 @@ class TesteIntegracaoRepositorioPagamentos {
                 .param("id", idPagamento)
                 .query(Integer.class)
                 .single()).isEqualTo(1);
+        assertThat(banco.sql("SELECT detalhes FROM divergencia_conciliacao WHERE id_pagamento = :id")
+                .param("id", idPagamento)
+                .query(String.class)
+                .single()).isEqualTo("Valor do provedor continua divergente");
+    }
+
+    @Test
+    void deveRegistrarConciliacaoComDivergenciasSemTruncarOStatus() {
+        UUID idEmpresa = UUID.randomUUID();
+        Instant iniciadaEm = Instant.parse("2026-08-23T12:00:00Z");
+
+        UUID idConciliacao = repositorio.registrarConciliacao(
+                idEmpresa,
+                1,
+                1,
+                iniciadaEm,
+                iniciadaEm.plusSeconds(2));
+
+        assertThat(repositorio.listarConciliacoes(idEmpresa, 10))
+                .singleElement()
+                .satisfies(conciliacao -> {
+                    assertThat(conciliacao.idConciliacao()).isEqualTo(idConciliacao);
+                    assertThat(conciliacao.status()).isEqualTo("CONCLUIDA_COM_DIVERGENCIAS");
+                    assertThat(conciliacao.divergenciasEncontradas()).isEqualTo(1);
+                });
     }
 }

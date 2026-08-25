@@ -13,7 +13,7 @@
 
     <groupId>br.com.orquestrapay</groupId>
     <artifactId>orquestrapay</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>1.0.0</version>
     <packaging>pom</packaging>
     <name>Orquestra de Pagamentos</name>
     <description>Plataforma distribuida de checkout e pagamentos resilientes</description>
@@ -21,6 +21,7 @@
     <modules>
         <module>libs/event-contracts</module>
         <module>libs/platform-core</module>
+        <module>sdk/orquestrapay-spring-boot-starter</module>
         <module>services/checkout-service</module>
         <module>services/inventory-service</module>
         <module>services/risk-service</module>
@@ -41,6 +42,7 @@
         <avro.version>1.12.1</avro.version>
         <apicurio.version>3.3.1</apicurio.version>
         <jacoco.version>0.8.14</jacoco.version>
+        <jacoco.minimo.linhas>0.20</jacoco.minimo.linhas>
         <aws.msk.iam.version>2.3.7</aws.msk.iam.version>
     </properties>
 
@@ -94,6 +96,27 @@
                         <goals>
                             <goal>report</goal>
                         </goals>
+                    </execution>
+                    <execution>
+                        <id>verificar-cobertura</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${jacoco.minimo.linhas}</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>

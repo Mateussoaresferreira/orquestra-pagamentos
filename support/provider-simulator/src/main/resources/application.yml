@@ -14,6 +14,10 @@ server:
 provedor:
   autenticacao:
     chave-api: ${PROVEDOR_CHAVE_API}
+  simulacao:
+    nome: ${PROVEDOR_NOME:principal}
+    segredo-webhook: ${PROVEDOR_SEGREDO_WEBHOOK:${PROVEDOR_CHAVE_API}}
+    hosts-notificacao-permitidos: ${PROVEDOR_HOSTS_NOTIFICACAO:localhost,servico-pagamento}
 management:
   endpoints.web.exposure.include: health,info,prometheus,metrics
   endpoint.health.probes.enabled: true

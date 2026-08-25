@@ -1,6 +1,7 @@
 {{- range .Values.servicos }}
 {{- $servico := . }}
 {{- $raiz := $ }}
+{{- if $servico.habilitado }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -53,7 +54,9 @@ spec:
             {{- if $servico.usaSeguranca }}
             - { name: SEGURANCA_HABILITADA, value: {{ $raiz.Values.global.seguranca.habilitada | quote }} }
             - { name: OIDC_EMISSOR, value: {{ $raiz.Values.global.seguranca.emissor | quote }} }
-            - { name: OIDC_CLIENTE_ID, value: {{ $raiz.Values.global.seguranca.clienteId | quote }} }
+            - { name: OIDC_CLIENTES_ID, value: {{ $raiz.Values.global.seguranca.clientesId | quote }} }
+            - { name: OIDC_CLIENTE_MAQUINA_ID, value: {{ $raiz.Values.global.seguranca.clienteMaquinaId | quote }} }
+            - { name: OIDC_EMPRESA_CLIENTE_MAQUINA, value: {{ $raiz.Values.global.seguranca.empresaClienteMaquina | quote }} }
             {{- end }}
             {{- if $servico.usaBanco }}
             - name: BANCO_URL
@@ -63,11 +66,29 @@ spec:
             - name: BANCO_SENHA
               valueFrom:
                 secretKeyRef: { name: {{ $raiz.Values.global.banco.segredo }}, key: {{ $servico.bancoSenhaChave }} }
+            - { name: SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE, value: {{ $raiz.Values.global.banco.pool.maximo | quote }} }
+            - { name: SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE, value: {{ $raiz.Values.global.banco.pool.minimo | quote }} }
+            - { name: SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT, value: {{ $raiz.Values.global.banco.pool.tempoLimiteConexaoMs | quote }} }
+            - { name: RETENCAO_EVENTOS_HABILITADA, value: {{ $raiz.Values.global.retencao.eventos.habilitada | quote }} }
+            - { name: RETENCAO_EVENTOS_TAMANHO_LOTE, value: {{ $raiz.Values.global.retencao.eventos.tamanhoLote | quote }} }
+            - { name: RETENCAO_EVENTOS_PROCESSADOS, value: {{ $raiz.Values.global.retencao.eventos.processados | quote }} }
+            - { name: RETENCAO_EVENTOS_PUBLICADOS, value: {{ $raiz.Values.global.retencao.eventos.publicados | quote }} }
+            - { name: RETENCAO_EVENTOS_QUARENTENA, value: {{ $raiz.Values.global.retencao.eventos.quarentena | quote }} }
+            - { name: RETENCAO_EVENTOS_INTERVALO, value: {{ $raiz.Values.global.retencao.eventos.intervalo | quote }} }
+            - { name: RETENCAO_EVENTOS_ATRASO_INICIAL, value: {{ $raiz.Values.global.retencao.eventos.atrasoInicial | quote }} }
             {{- end }}
             {{- if $servico.usaKafka }}
             - { name: KAFKA_SERVIDORES, value: {{ $raiz.Values.global.kafka.servidores | quote }} }
-            - { name: TOPICO_SAGA, value: {{ $raiz.Values.global.kafka.topico | quote }} }
+            - { name: TOPICO_CHECKOUT, value: {{ $raiz.Values.global.kafka.topicos.checkout | quote }} }
+            - { name: TOPICO_ESTOQUE, value: {{ $raiz.Values.global.kafka.topicos.estoque | quote }} }
+            - { name: TOPICO_RISCO, value: {{ $raiz.Values.global.kafka.topicos.risco | quote }} }
+            - { name: TOPICO_PAGAMENTO, value: {{ $raiz.Values.global.kafka.topicos.pagamento | quote }} }
+            - { name: TOPICO_RAZAO, value: {{ $raiz.Values.global.kafka.topicos.razao | quote }} }
+            - { name: TOPICO_NOTIFICACAO, value: {{ $raiz.Values.global.kafka.topicos.notificacao | quote }} }
+            - { name: TOPICOS_PARTICOES, value: {{ $raiz.Values.global.kafka.particoes | quote }} }
             - { name: REGISTRO_ESQUEMAS_URL, value: {{ $raiz.Values.global.registroEsquemas.url | quote }} }
+            - { name: KAFKA_CONCORRENCIA, value: {{ default 1 $servico.concorrenciaKafka | quote }} }
+            - { name: ORQUESTRAPAY_EVENTOS_CONCORRENCIA_PUBLICACAO, value: {{ default 4 $servico.concorrenciaOutbox | quote }} }
             {{- if $raiz.Values.global.kafka.autenticacaoIam }}
             - { name: SPRING_KAFKA_PROPERTIES_SECURITY_PROTOCOL, value: "SASL_SSL" }
             - { name: SPRING_KAFKA_PROPERTIES_SASL_MECHANISM, value: "AWS_MSK_IAM" }
@@ -83,6 +104,18 @@ spec:
               valueFrom:
                 secretKeyRef: { name: {{ $raiz.Values.global.banco.segredo }}, key: redis-senha }
             {{- end }}
+            {{- if eq $servico.chave "checkout" }}
+            - { name: LIMITE_REQUISICOES_MAXIMO, value: {{ $raiz.Values.global.admissao.maximoPorEmpresa | quote }} }
+            - { name: LIMITE_REQUISICOES_JANELA, value: {{ $raiz.Values.global.admissao.janelaPorEmpresa | quote }} }
+            - { name: LIMITE_REQUISICOES_GLOBAL_MAXIMO, value: {{ $raiz.Values.global.admissao.maximoGlobal | quote }} }
+            - { name: LIMITE_REQUISICOES_GLOBAL_JANELA, value: {{ $raiz.Values.global.admissao.janelaGlobal | quote }} }
+            - { name: ADMISSAO_MAXIMO_EM_PROCESSAMENTO, value: {{ $raiz.Values.global.admissao.maximoEmProcessamento | quote }} }
+            - { name: RETENCAO_CHECKOUT_HABILITADA, value: {{ $raiz.Values.global.retencao.checkout.habilitada | quote }} }
+            - { name: RETENCAO_CHECKOUT_TAMANHO_LOTE, value: {{ $raiz.Values.global.retencao.checkout.tamanhoLote | quote }} }
+            - { name: RETENCAO_CHECKOUT_CHAVES, value: {{ $raiz.Values.global.retencao.checkout.chavesIdempotencia | quote }} }
+            - { name: RETENCAO_CHECKOUT_INTERVALO, value: {{ $raiz.Values.global.retencao.checkout.intervalo | quote }} }
+            - { name: RETENCAO_CHECKOUT_ATRASO_INICIAL, value: {{ $raiz.Values.global.retencao.checkout.atrasoInicial | quote }} }
+            {{- end }}
             {{- if $servico.usaCriptografia }}
             - name: CHAVE_CRIPTOGRAFIA_TOKEN
               valueFrom:
@@ -92,6 +125,23 @@ spec:
             - name: PROVEDOR_CHAVE_API
               valueFrom:
                 secretKeyRef: { name: {{ $raiz.Values.global.banco.segredo }}, key: chave-api-provedor }
+            {{- end }}
+            {{- if $servico.usaIntegracaoPagamentos }}
+            - { name: PROVEDOR_PRINCIPAL_URL, value: {{ $raiz.Values.integracoes.pagamentos.principalUrl | quote }} }
+            - { name: PROVEDOR_CONTINGENCIA_URL, value: {{ $raiz.Values.integracoes.pagamentos.contingenciaUrl | quote }} }
+            - { name: PIX_URL_NOTIFICACAO, value: {{ $raiz.Values.integracoes.pagamentos.pixUrlNotificacao | quote }} }
+            - name: PROVEDOR_PRINCIPAL_CHAVE_API
+              valueFrom:
+                secretKeyRef: { name: {{ $raiz.Values.global.banco.segredo }}, key: chave-api-provedor-principal }
+            - name: PROVEDOR_PRINCIPAL_SEGREDO_WEBHOOK
+              valueFrom:
+                secretKeyRef: { name: {{ $raiz.Values.global.banco.segredo }}, key: segredo-webhook-provedor-principal }
+            - name: PROVEDOR_CONTINGENCIA_CHAVE_API
+              valueFrom:
+                secretKeyRef: { name: {{ $raiz.Values.global.banco.segredo }}, key: chave-api-provedor-contingencia }
+            - name: PROVEDOR_CONTINGENCIA_SEGREDO_WEBHOOK
+              valueFrom:
+                secretKeyRef: { name: {{ $raiz.Values.global.banco.segredo }}, key: segredo-webhook-provedor-contingencia }
             {{- end }}
             {{- if $servico.usaPoliticaRisco }}
             - { name: RISCO_LIMITE_VALOR_ALTO, value: {{ $raiz.Values.politicaRisco.limiteValorAlto | quote }} }
@@ -159,4 +209,5 @@ spec:
       targetPort: http
   type: ClusterIP
 ---
+{{- end }}
 {{- end }}

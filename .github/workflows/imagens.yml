@@ -46,25 +46,25 @@ jobs:
         include:
           - nome: servico-checkout
             contexto: services/checkout-service
-            artefato: target/servico-checkout-0.1.0-SNAPSHOT.jar
+            artefato: target/servico-checkout-1.0.0.jar
           - nome: servico-estoque
             contexto: services/inventory-service
-            artefato: target/servico-estoque-0.1.0-SNAPSHOT.jar
+            artefato: target/servico-estoque-1.0.0.jar
           - nome: servico-risco
             contexto: services/risk-service
-            artefato: target/servico-risco-0.1.0-SNAPSHOT.jar
+            artefato: target/servico-risco-1.0.0.jar
           - nome: servico-pagamento
             contexto: services/payment-service
-            artefato: target/servico-pagamento-0.1.0-SNAPSHOT.jar
+            artefato: target/servico-pagamento-1.0.0.jar
           - nome: servico-razao
             contexto: services/ledger-service
-            artefato: target/servico-razao-0.1.0-SNAPSHOT.jar
+            artefato: target/servico-razao-1.0.0.jar
           - nome: servico-notificacao
             contexto: services/notification-service
-            artefato: target/servico-notificacao-0.1.0-SNAPSHOT.jar
+            artefato: target/servico-notificacao-1.0.0.jar
           - nome: simulador-provedor
             contexto: support/provider-simulator
-            artefato: target/simulador-provedor-0.1.0-SNAPSHOT.jar
+            artefato: target/simulador-provedor-1.0.0.jar
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8

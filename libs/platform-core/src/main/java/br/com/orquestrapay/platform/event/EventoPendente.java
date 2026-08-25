@@ -15,5 +15,6 @@ public record EventoPendente(
         String conteudo,
         String traceparent,
         Instant ocorridoEm,
-        int tentativas) {
+        int tentativas,
+        UUID tokenBloqueio) {
 }

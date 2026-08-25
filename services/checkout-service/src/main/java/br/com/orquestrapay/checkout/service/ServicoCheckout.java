@@ -14,6 +14,7 @@ import static br.com.orquestrapay.contracts.TiposEventos.LANCAMENTOS_REGISTRADOS
 import static br.com.orquestrapay.contracts.TiposEventos.LIBERAR_ESTOQUE;
 import static br.com.orquestrapay.contracts.TiposEventos.PAGAMENTO_AUTORIZADO;
 import static br.com.orquestrapay.contracts.TiposEventos.PAGAMENTO_ESTORNADO;
+import static br.com.orquestrapay.contracts.TiposEventos.PAGAMENTO_PENDENTE;
 import static br.com.orquestrapay.contracts.TiposEventos.PAGAMENTO_RECUSADO;
 import static br.com.orquestrapay.contracts.TiposEventos.REGISTRAR_LANCAMENTOS;
 import static br.com.orquestrapay.contracts.TiposEventos.RESERVAR_ESTOQUE;
@@ -38,6 +39,7 @@ import br.com.orquestrapay.checkout.domain.StatusCompra;
 import br.com.orquestrapay.contracts.CompraFinalizada;
 import br.com.orquestrapay.contracts.EventoSaga;
 import br.com.orquestrapay.contracts.ItemCompra;
+import br.com.orquestrapay.contracts.MetodoPagamento;
 import br.com.orquestrapay.contracts.ResultadoEstoque;
 import br.com.orquestrapay.contracts.ResultadoLancamentos;
 import br.com.orquestrapay.contracts.ResultadoPagamento;
@@ -72,6 +74,7 @@ public class ServicoCheckout {
             RISCO_APROVADO,
             RISCO_REPROVADO,
             PAGAMENTO_AUTORIZADO,
+            PAGAMENTO_PENDENTE,
             PAGAMENTO_RECUSADO,
             LANCAMENTOS_REGISTRADOS,
             LANCAMENTOS_RECUSADOS,
@@ -107,6 +110,7 @@ public class ServicoCheckout {
     public ResultadoCriacao iniciar(UUID idEmpresa, String chaveIdempotencia, NovaCompra requisicao) {
         validarChave(chaveIdempotencia);
         validarProdutosUnicos(requisicao);
+        validarPagamento(requisicao);
         String hash = calcularHash(idEmpresa, requisicao);
 
         repositorio.bloquearIdempotencia(idEmpresa, chaveIdempotencia);
@@ -129,6 +133,12 @@ public class ServicoCheckout {
                 .map(ItemCompra::subtotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.UNNECESSARY);
+        if (total.movePointRight(2).compareTo(BigDecimal.valueOf(requisicao.parcelas())) < 0) {
+            throw new ExcecaoNegocio(
+                    HttpStatus.BAD_REQUEST,
+                    "parcelamento-invalido",
+                    "O valor total deve permitir ao menos um centavo por parcela");
+        }
         Instant agora = relogio.instant();
         UUID idCompra = UUID.randomUUID();
         UUID idReserva = UUID.randomUUID();
@@ -141,6 +151,8 @@ public class ServicoCheckout {
                 requisicao.moeda(),
                 requisicao.pais(),
                 requisicao.identificadorDispositivo(),
+                requisicao.metodoPagamento(),
+                requisicao.parcelas(),
                 total,
                 StatusCompra.RECEBIDA,
                 idReserva,
@@ -207,6 +219,7 @@ public class ServicoCheckout {
             case ESTOQUE_RECUSADO -> estoqueRecusado(compra, evento, idEvento);
             case RISCO_APROVADO -> riscoAprovado(compra, evento, idEvento);
             case RISCO_REPROVADO -> riscoReprovado(compra, evento, idEvento);
+            case PAGAMENTO_PENDENTE -> pagamentoPendente(compra, evento, idEvento);
             case PAGAMENTO_AUTORIZADO -> pagamentoAutorizado(compra, evento, idEvento);
             case PAGAMENTO_RECUSADO -> pagamentoRecusado(compra, evento, idEvento);
             case LANCAMENTOS_REGISTRADOS -> lancamentosRegistrados(compra, evento, idEvento);
@@ -245,17 +258,23 @@ public class ServicoCheckout {
         ResultadoRisco resultado = ler(evento, ResultadoRisco.class);
         transicionar(compra, StatusCompra.ESTOQUE_RESERVADO, StatusCompra.RISCO_APROVADO,
                 idEvento, "Risco aprovado", "Pontuacao: " + resultado.pontuacao());
-        String tokenProtegido = repositorio.buscarTokenProtegido(
-                        compra.idEmpresa(), compra.idCompra())
-                .orElseThrow(() -> new IllegalStateException(
-                        "Token de pagamento nao encontrado para a compra " + compra.idCompra()));
+        String tokenProtegido = compra.metodoPagamento() == MetodoPagamento.CARTAO
+                ? repositorio.buscarTokenProtegido(compra.idEmpresa(), compra.idCompra())
+                        .orElseThrow(() -> new IllegalStateException(
+                                "Token de pagamento nao encontrado para a compra " + compra.idCompra()))
+                : null;
         eventos.registrar(
                 AUTORIZAR_PAGAMENTO,
                 compra.idCompra(),
                 compra.idEmpresa(),
                 compra.idCompra(),
                 ORIGEM,
-                new SolicitacaoPagamento(compra.valorTotal(), compra.moeda(), tokenProtegido));
+                new SolicitacaoPagamento(
+                        compra.valorTotal(),
+                        compra.moeda(),
+                        tokenProtegido,
+                        compra.metodoPagamento(),
+                        compra.parcelas()));
     }
 
     private void riscoReprovado(Compra compra, EventoSaga evento, UUID idEvento) {
@@ -269,7 +288,10 @@ public class ServicoCheckout {
     private void pagamentoAutorizado(Compra compra, EventoSaga evento, UUID idEvento) {
         ResultadoPagamento resultado = ler(evento, ResultadoPagamento.class);
         repositorio.vincularPagamento(compra.idCompra(), resultado.idPagamento(), relogio.instant());
-        transicionar(compra, StatusCompra.RISCO_APROVADO, StatusCompra.PAGAMENTO_AUTORIZADO,
+        StatusCompra esperado = compra.status() == StatusCompra.AGUARDANDO_PAGAMENTO
+                ? StatusCompra.AGUARDANDO_PAGAMENTO
+                : StatusCompra.RISCO_APROVADO;
+        transicionar(compra, esperado, StatusCompra.PAGAMENTO_AUTORIZADO,
                 idEvento, "Pagamento autorizado", "Autorizacao: " + resultado.idAutorizacao());
         eventos.registrar(
                 REGISTRAR_LANCAMENTOS,
@@ -277,15 +299,34 @@ public class ServicoCheckout {
                 compra.idEmpresa(),
                 compra.idCompra(),
                 ORIGEM,
-                new SolicitacaoLancamentos(resultado.idPagamento(), compra.valorTotal(), compra.moeda()));
+                new SolicitacaoLancamentos(
+                        resultado.idPagamento(),
+                        compra.valorTotal(),
+                        compra.moeda(),
+                        compra.parcelas()));
     }
 
     private void pagamentoRecusado(Compra compra, EventoSaga evento, UUID idEvento) {
         ResultadoPagamento resultado = ler(evento, ResultadoPagamento.class);
-        transicionar(compra, StatusCompra.RISCO_APROVADO, StatusCompra.RECUSADA,
+        StatusCompra esperado = compra.status() == StatusCompra.AGUARDANDO_PAGAMENTO
+                ? StatusCompra.AGUARDANDO_PAGAMENTO
+                : StatusCompra.RISCO_APROVADO;
+        transicionar(compra, esperado, StatusCompra.RECUSADA,
                 idEvento, "Pagamento recusado", resultado.motivo());
         solicitarLiberacao(compra, resultado.motivo());
         finalizar(compra, COMPRA_RECUSADA, StatusCompra.RECUSADA, resultado.motivo());
+    }
+
+    private void pagamentoPendente(Compra compra, EventoSaga evento, UUID idEvento) {
+        ResultadoPagamento resultado = ler(evento, ResultadoPagamento.class);
+        repositorio.vincularPagamento(compra.idCompra(), resultado.idPagamento(), relogio.instant());
+        transicionar(
+                compra,
+                StatusCompra.RISCO_APROVADO,
+                StatusCompra.AGUARDANDO_PAGAMENTO,
+                idEvento,
+                "Cobranca PIX criada",
+                "Aguardando confirmacao do pagamento");
     }
 
     private void lancamentosRegistrados(Compra compra, EventoSaga evento, UUID idEvento) {
@@ -413,6 +454,22 @@ public class ServicoCheckout {
                     HttpStatus.BAD_REQUEST,
                     "produto-duplicado",
                     "Agrupe a quantidade do mesmo produto em um unico item");
+        }
+    }
+
+    private void validarPagamento(NovaCompra requisicao) {
+        if (requisicao.metodoPagamento() == MetodoPagamento.CARTAO
+                && (requisicao.tokenPagamento() == null || requisicao.tokenPagamento().isBlank())) {
+            throw new ExcecaoNegocio(
+                    HttpStatus.BAD_REQUEST,
+                    "token-pagamento-obrigatorio",
+                    "Informe o token de pagamento para compras com cartao");
+        }
+        if (requisicao.metodoPagamento() == MetodoPagamento.PIX && requisicao.parcelas() != 1) {
+            throw new ExcecaoNegocio(
+                    HttpStatus.BAD_REQUEST,
+                    "pix-nao-parcelado",
+                    "Compras PIX devem ter exatamente uma parcela");
         }
     }
 

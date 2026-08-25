@@ -49,7 +49,7 @@ public class FiltroEmpresaAutenticada extends OncePerRequestFilter {
             return;
         }
 
-        String empresaAutorizada = jwt.getClaimAsString(propriedades.claimEmpresa());
+        String empresaAutorizada = resolverEmpresaAutorizada(jwt);
         if (!mesmaEmpresa(empresaAutorizada, empresaInformada)) {
             escreverProblema(
                     resposta,
@@ -59,6 +59,16 @@ public class FiltroEmpresaAutenticada extends OncePerRequestFilter {
             return;
         }
         cadeia.doFilter(requisicao, resposta);
+    }
+
+    private String resolverEmpresaAutorizada(Jwt jwt) {
+        String clienteToken = jwt.getClaimAsString("client_id");
+        if (propriedades.clienteMaquinaId() != null
+                && propriedades.clienteMaquinaId().equals(clienteToken)) {
+            return propriedades.empresaClienteMaquina();
+        }
+        String empresaDoUsuario = jwt.getClaimAsString(propriedades.claimEmpresa());
+        return empresaDoUsuario == null || empresaDoUsuario.isBlank() ? null : empresaDoUsuario;
     }
 
     private boolean mesmaEmpresa(String empresaAutorizada, String empresaInformada) {

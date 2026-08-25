@@ -81,10 +81,69 @@ variable "nos_maximos" {
   default = 6
 }
 
+variable "habilitar_karpenter" {
+  description = "Habilita provisionamento dinamico de nos EKS com Karpenter e tratamento de interrupcoes Spot. Obrigatorio em producao."
+  type        = bool
+  default     = false
+}
+
 variable "classe_banco" {
   description = "Classe da instancia PostgreSQL compartilhada pelo ambiente de referencia."
   type        = string
   default     = "db.t4g.medium"
+}
+
+variable "habilitar_proxy_banco" {
+  description = "Habilita o RDS Proxy para controlar tempestades de conexoes ao PostgreSQL. Obrigatorio em producao."
+  type        = bool
+  default     = false
+}
+
+variable "credenciais_proxy_banco" {
+  description = "Senhas, com ao menos 24 caracteres, dos usuarios checkout, estoque, risco, pagamento, razao, notificacao e registro."
+  type        = map(string)
+  sensitive   = true
+  default     = {}
+
+  validation {
+    condition = alltrue([
+      for senha in values(var.credenciais_proxy_banco) : length(senha) >= 24 && length(senha) <= 128
+    ])
+    error_message = "Cada senha de usuario do RDS Proxy deve ter entre 24 e 128 caracteres."
+  }
+}
+
+variable "percentual_conexoes_proxy" {
+  description = "Percentual maximo das conexoes do PostgreSQL que o proxy pode utilizar."
+  type        = number
+  default     = 80
+
+  validation {
+    condition     = var.percentual_conexoes_proxy >= 1 && var.percentual_conexoes_proxy <= 100
+    error_message = "O percentual maximo de conexoes do proxy deve ficar entre 1 e 100."
+  }
+}
+
+variable "percentual_conexoes_ociosas_proxy" {
+  description = "Percentual maximo de conexoes ociosas mantidas pelo proxy."
+  type        = number
+  default     = 40
+
+  validation {
+    condition     = var.percentual_conexoes_ociosas_proxy >= 0 && var.percentual_conexoes_ociosas_proxy <= 100
+    error_message = "O percentual de conexoes ociosas do proxy deve ficar entre 0 e 100."
+  }
+}
+
+variable "tempo_emprestimo_proxy_segundos" {
+  description = "Tempo maximo que uma requisicao aguarda uma conexao do pool do proxy."
+  type        = number
+  default     = 10
+
+  validation {
+    condition     = var.tempo_emprestimo_proxy_segundos >= 1 && var.tempo_emprestimo_proxy_segundos <= 300
+    error_message = "O tempo de emprestimo do proxy deve ficar entre 1 e 300 segundos."
+  }
 }
 
 variable "banco_multi_az" {
@@ -161,6 +220,34 @@ variable "url_retorno_cognito" {
   description = "URL autorizada para o fluxo Authorization Code com PKCE."
   type        = string
   default     = "http://localhost:3000/autenticacao/retorno"
+}
+
+variable "habilitar_waf" {
+  description = "Habilita o AWS WAF regional que protege o ALB publico da API."
+  type        = bool
+  default     = false
+}
+
+variable "limite_waf_por_ip" {
+  description = "Quantidade maxima de requisicoes por IP na janela de avaliacao do WAF."
+  type        = number
+  default     = 2000
+
+  validation {
+    condition     = var.limite_waf_por_ip >= 100 && var.limite_waf_por_ip <= 2000000
+    error_message = "O limite do WAF por IP deve ficar entre 100 e 2.000.000."
+  }
+}
+
+variable "janela_avaliacao_waf_segundos" {
+  description = "Janela explicita, em segundos, usada pelo limite por IP do AWS WAF."
+  type        = number
+  default     = 60
+
+  validation {
+    condition     = contains([60, 120, 300, 600], var.janela_avaliacao_waf_segundos)
+    error_message = "A janela do WAF deve ser 60, 120, 300 ou 600 segundos."
+  }
 }
 
 variable "email_alertas" {

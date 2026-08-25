@@ -9,6 +9,7 @@ import jakarta.validation.Validator;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.ObjectMapper;
 
 class TesteValidacaoNovaCompra {
 
@@ -60,9 +61,50 @@ class TesteValidacaoNovaCompra {
     }
 
     @Test
+    void deveRejeitarSondasBooleanasDeSqlDaMesmaForma() {
+        var primeiraSonda = validador.validate(novaCompra("John Doe AND 1=1 --", List.of(itemValido())));
+        var segundaSonda = validador.validate(novaCompra("John Doe AND 1=2 --", List.of(itemValido())));
+
+        assertThat(primeiraSonda)
+                .extracting(violacao -> violacao.getPropertyPath().toString())
+                .containsExactly("moeda");
+        assertThat(segundaSonda)
+                .extracting(violacao -> violacao.getPropertyPath().toString())
+                .containsExactly("moeda");
+        assertThat(primeiraSonda.iterator().next().getMessage())
+                .isEqualTo(segundaSonda.iterator().next().getMessage());
+    }
+
+    @Test
     void deveAceitarMoedaComercialEIndicadorSemMoedaDaIso() {
         assertThat(validador.validate(novaCompra("BRL", List.of(itemValido())))).isEmpty();
         assertThat(validador.validate(novaCompra("XXX", List.of(itemValido())))).isEmpty();
+    }
+
+    @Test
+    void deveAplicarCartaoEUmaParcelaQuandoCamposOpcionaisNaoForemEnviados() throws Exception {
+        var idProduto = java.util.UUID.randomUUID();
+        var json = """
+                {
+                  "idCliente": "cliente-legado",
+                  "emailCliente": "cliente@exemplo.com",
+                  "moeda": "BRL",
+                  "pais": "BR",
+                  "identificadorDispositivo": "dispositivo-001",
+                  "tokenPagamento": "tok_aprovado",
+                  "itens": [{
+                    "idProduto": "%s",
+                    "quantidade": 1,
+                    "precoUnitario": 19.90
+                  }]
+                }
+                """.formatted(idProduto);
+
+        var compra = new ObjectMapper().readValue(json, NovaCompra.class);
+
+        assertThat(compra.metodoPagamento()).isEqualTo(br.com.orquestrapay.contracts.MetodoPagamento.CARTAO);
+        assertThat(compra.parcelas()).isEqualTo(1);
+        assertThat(compra.itens()).hasSize(1);
     }
 
     @Test

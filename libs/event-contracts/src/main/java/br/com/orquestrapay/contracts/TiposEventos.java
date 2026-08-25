@@ -14,6 +14,7 @@ public final class TiposEventos {
 
     public static final String AUTORIZAR_PAGAMENTO = "AUTORIZAR_PAGAMENTO";
     public static final String PAGAMENTO_AUTORIZADO = "PAGAMENTO_AUTORIZADO";
+    public static final String PAGAMENTO_PENDENTE = "PAGAMENTO_PENDENTE";
     public static final String PAGAMENTO_RECUSADO = "PAGAMENTO_RECUSADO";
     public static final String ESTORNAR_PAGAMENTO = "ESTORNAR_PAGAMENTO";
     public static final String PAGAMENTO_ESTORNADO = "PAGAMENTO_ESTORNADO";

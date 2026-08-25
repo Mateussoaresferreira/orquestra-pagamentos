@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.Executors;
 
+import br.com.orquestrapay.payment.integration.ExcecaoRequisicaoProvedor;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.ResourceAccessException;
 
@@ -61,6 +62,33 @@ class TesteConfiguracaoProvedor {
                 "curta"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("24 caracteres");
+    }
+
+    @Test
+    void deveClassificarErroQuatrocentosNaoTransitorioComoRequisicaoRejeitada() throws Exception {
+        var servidor = HttpServer.create(
+                new InetSocketAddress(InetAddress.getLoopbackAddress(), 0),
+                1);
+        servidor.createContext("/teste", requisicao -> {
+            requisicao.sendResponseHeaders(422, -1);
+            requisicao.close();
+        });
+        servidor.start();
+        try {
+            var propriedades = new PropriedadesProvedor(
+                    URI.create("http://127.0.0.1:" + servidor.getAddress().getPort()),
+                    Duration.ofSeconds(1),
+                    Duration.ofSeconds(1),
+                    "chave-api-provedor-para-testes");
+            var cliente = new ConfiguracaoProvedor().clienteHttpProvedor(propriedades);
+
+            assertThatThrownBy(() -> cliente.get().uri("/teste").retrieve().toBodilessEntity())
+                    .isInstanceOf(ExcecaoRequisicaoProvedor.class)
+                    .extracting(excecao -> ((ExcecaoRequisicaoProvedor) excecao).statusHttp())
+                    .isEqualTo(422);
+        } finally {
+            servidor.stop(0);
+        }
     }
 
     private void responderComAtraso(HttpExchange requisicao) throws IOException {

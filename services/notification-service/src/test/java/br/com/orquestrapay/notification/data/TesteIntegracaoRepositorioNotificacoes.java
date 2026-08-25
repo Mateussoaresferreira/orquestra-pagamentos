@@ -52,14 +52,21 @@ class TesteIntegracaoRepositorioNotificacoes {
                 "Sua compra foi concluida com sucesso.",
                 agora);
 
-        var pendente = repositorio.bloquearPendentes(10).getFirst();
+        var pendente = repositorio.reivindicarPendentes(
+                10, 5, agora, agora.plusSeconds(30)).getFirst();
         assertThat(pendente.destinatario()).isEqualTo("cliente@exemplo.com");
 
-        repositorio.registrarFalha(pendente.idNotificacao(), "Servidor SMTP indisponivel");
+        repositorio.registrarFalha(
+                pendente.idNotificacao(),
+                "Servidor SMTP indisponivel",
+                agora.plusSeconds(10),
+                null);
         var aposFalha = repositorio.buscar(idEmpresa, idCompra).getFirst();
         assertThat(aposFalha.status()).isEqualTo("PENDENTE");
         assertThat(aposFalha.tentativas()).isEqualTo(1);
 
+        repositorio.reivindicarPendentes(
+                10, 5, agora.plusSeconds(11), agora.plusSeconds(41));
         repositorio.marcarEnviada(pendente.idNotificacao(), agora.plusSeconds(30));
         var enviada = repositorio.buscar(idEmpresa, idCompra).getFirst();
         assertThat(enviada.status()).isEqualTo("ENVIADA");

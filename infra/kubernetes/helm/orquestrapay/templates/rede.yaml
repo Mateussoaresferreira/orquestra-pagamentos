@@ -64,4 +64,19 @@ spec:
         - ipBlock: { cidr: 0.0.0.0/0 }
       ports:
         - { protocol: TCP, port: 8080 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ingresso-publico-webhook-pagamento
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: servico-pagamento
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - ipBlock: { cidr: 0.0.0.0/0 }
+      ports:
+        - { protocol: TCP, port: 8080 }
 {{- end }}

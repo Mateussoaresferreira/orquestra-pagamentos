@@ -8,7 +8,7 @@
       "title": "Servicos disponiveis",
       "gridPos": {"h": 5, "w": 6, "x": 0, "y": 0},
       "targets": [{"expr": "sum(up{job=\"orquestrapay\"})", "refId": "A"}],
-      "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 6}]}}}
+      "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 8}]}}}
     },
     {
       "type": "stat",
@@ -51,6 +51,42 @@
       "title": "Conexoes JDBC ativas",
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 13},
       "targets": [{"expr": "hikaricp_connections_active", "legendFormat": "{{application}}", "refId": "A"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Roteamento entre provedores",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 21},
+      "targets": [{"expr": "sum by (provedor, resultado) (rate(orquestrapay_roteamento_resultados_total[5m]))", "legendFormat": "{{provedor}} - {{resultado}}", "refId": "A"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Operacoes de pagamento",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 21},
+      "targets": [{"expr": "sum by (tipo, resultado) (rate(orquestrapay_operacoes_pagamento_total[5m]))", "legendFormat": "{{tipo}} - {{resultado}}", "refId": "A"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Entregas de webhooks",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 29},
+      "targets": [{"expr": "sum by (resultado) (rate(orquestrapay_webhooks_entregas_total[5m]))", "legendFormat": "{{resultado}}", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "PIX expirados",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 29},
+      "targets": [{"expr": "sum(orquestrapay_pix_expirados_total)", "refId": "A"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Divergencias de conciliacao",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 37},
+      "targets": [{"expr": "sum by (tipo) (rate(orquestrapay_conciliacoes_divergencias_total[5m]))", "legendFormat": "{{tipo}}", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Sagas reativadas pelo watchdog",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 37},
+      "targets": [{"expr": "sum(orquestrapay_sagas_reativadas_total)", "refId": "A"}]
     }
   ],
   "refresh": "10s",

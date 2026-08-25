@@ -2,6 +2,7 @@ package br.com.orquestrapay.risk.data;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.stream.Stream;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -42,6 +43,21 @@ public class RepositorioRisco {
                 .param("desde", DatasSql.gravar(desde))
                 .query(Integer.class)
                 .single();
+    }
+
+    public void bloquearJanelasDeVelocidade(
+            UUID idEmpresa,
+            String idCliente,
+            String identificadorDispositivo) {
+        Stream.of(
+                        "cliente:" + idEmpresa + ":" + idCliente,
+                        "dispositivo:" + idEmpresa + ":" + identificadorDispositivo)
+                .sorted()
+                .forEach(chave -> banco.sql(
+                                "SELECT pg_advisory_xact_lock(hashtextextended(:chave, 0))")
+                        .param("chave", chave)
+                        .query((resultado, linha) -> Boolean.TRUE)
+                        .single());
     }
 
     public int contarClientesNoDispositivo(

@@ -35,13 +35,47 @@ function Enviar-Http {
         Method = $Metodo
         Uri = $Url
         Headers = $Cabecalhos
-        SkipHttpErrorCheck = $true
+        UseBasicParsing = $true
     }
-    if ($null -ne $Corpo) {
+    if (-not [string]::IsNullOrEmpty($Corpo)) {
         $parametros.ContentType = 'application/json'
         $parametros.Body = $Corpo
     }
-    return Invoke-WebRequest @parametros
+
+    $comando = Get-Command Invoke-WebRequest
+    if ($comando.Parameters.ContainsKey('SkipHttpErrorCheck')) {
+        $parametros.SkipHttpErrorCheck = $true
+        return Invoke-WebRequest @parametros
+    }
+
+    try {
+        return Invoke-WebRequest @parametros
+    }
+    catch {
+        $resposta = $_.Exception.Response
+        if ($null -eq $resposta) {
+            throw
+        }
+
+        $conteudo = ''
+        $fluxo = $resposta.GetResponseStream()
+        if ($null -ne $fluxo) {
+            $leitor = [System.IO.StreamReader]::new($fluxo)
+            try {
+                $conteudo = $leitor.ReadToEnd()
+            }
+            finally {
+                $leitor.Dispose()
+                $fluxo.Dispose()
+            }
+        }
+
+        return [pscustomobject]@{
+            StatusCode = [int]$resposta.StatusCode
+            Headers = $resposta.Headers
+            Content = $conteudo
+        }
+    }
 }
 
 function Converter-Json {
@@ -143,6 +177,32 @@ $provedorChaveErrada = Enviar-Http POST "$UrlProvedor/api/v1/autorizacoes" '{}' 
 Garantir ($provedorSemChave.StatusCode -eq 401) 'O provedor aceitou chamada sem chave.'
 Garantir ($provedorChaveErrada.StatusCode -eq 401) 'O provedor aceitou chave incorreta.'
 
+$corpoWebhook = Converter-Json @{
+    idEvento = [guid]::NewGuid()
+    idCompra = [guid]::NewGuid()
+    txid = 'pix-seguranca'
+    status = 'CONFIRMADO'
+    ocorridoEm = [DateTimeOffset]::UtcNow
+}
+$agoraEpoch = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+$webhookAssinaturaErrada = Enviar-Http POST "$UrlPagamento/api/v1/webhooks/provedores" `
+    $corpoWebhook @{
+        'X-Provedor' = 'principal'
+        'X-Orquestra-Timestamp' = $agoraEpoch
+        'X-Orquestra-Signature' = 'assinatura-invalida'
+    }
+Garantir ($webhookAssinaturaErrada.StatusCode -eq 401) `
+    'O callback do provedor aceitou assinatura HMAC invalida.'
+
+$webhookExpirado = Enviar-Http POST "$UrlPagamento/api/v1/webhooks/provedores" `
+    $corpoWebhook @{
+        'X-Provedor' = 'principal'
+        'X-Orquestra-Timestamp' = ($agoraEpoch - 600)
+        'X-Orquestra-Signature' = 'assinatura-invalida'
+    }
+Garantir ($webhookExpirado.StatusCode -eq 401) `
+    'O callback do provedor aceitou timestamp fora da janela de seguranca.'
+
 $redisSemSenha = (docker compose exec -T redis redis-cli PING 2>&1 | Out-String)
 Garantir ($redisSemSenha -match 'NOAUTH') 'O Redis respondeu sem exigir autenticacao.'
 
@@ -190,6 +250,7 @@ Write-Host 'Testes adversariais aprovados.' -ForegroundColor Green
     limitesHttp = 'aprovados'
     cabecalhosHttp = 'aplicados em todos os servicos'
     token = 'AES-GCM sem vazamento em logs'
+    callbacks = 'HMAC e janela temporal aprovados'
     respostas = 'sem detalhes internos'
     integridade = 'restricoes PostgreSQL ativas'
 } | Format-List

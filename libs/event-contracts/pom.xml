@@ -6,7 +6,7 @@
     <parent>
         <groupId>br.com.orquestrapay</groupId>
         <artifactId>orquestrapay</artifactId>
-        <version>0.1.0-SNAPSHOT</version>
+        <version>1.0.0</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
     <artifactId>contratos-eventos</artifactId>

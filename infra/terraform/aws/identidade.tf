@@ -119,7 +119,10 @@ locals {
     "pagamentos:ler"       = "Consultar pagamentos"
     "pagamentos:conciliar" = "Conciliar pagamentos"
     "razao:ler"            = "Consultar razao contabil"
+    "razao:escrever"       = "Liquidar parcelas da razao contabil"
     "notificacoes:ler"     = "Consultar notificacoes"
+    "webhooks:ler"         = "Consultar configuracoes e entregas de webhooks"
+    "webhooks:gerenciar"   = "Configurar e reprocessar webhooks"
   }
   escopos_api = [for escopo in aws_cognito_resource_server.api.scope_identifiers : escopo]
 }
@@ -130,17 +133,35 @@ resource "aws_cognito_user_pool_client" "web" {
   generate_secret                      = false
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
-  allowed_oauth_scopes                 = concat(["openid", "email", "profile"], local.escopos_api)
+  allowed_oauth_scopes                 = ["openid", "email", "profile"]
   callback_urls                        = [var.url_retorno_cognito]
   supported_identity_providers         = ["COGNITO"]
   enable_token_revocation              = true
-  access_token_validity                = 15
-  id_token_validity                    = 15
-  refresh_token_validity               = 1
+  prevent_user_existence_errors        = "ENABLED"
+  read_attributes = [
+    "custom:empresa_id",
+    "email",
+    "email_verified",
+    "family_name",
+    "given_name"
+  ]
+  write_attributes = [
+    "email",
+    "family_name",
+    "given_name"
+  ]
+  access_token_validity  = 15
+  id_token_validity      = 15
+  refresh_token_validity = 1
   token_validity_units {
     access_token  = "minutes"
     id_token      = "minutes"
     refresh_token = "days"
+  }
+
+  refresh_token_rotation {
+    feature                    = "ENABLED"
+    retry_grace_period_seconds = 10
   }
 }
 
@@ -152,6 +173,7 @@ resource "aws_cognito_user_pool_client" "maquina" {
   allowed_oauth_flows                  = ["client_credentials"]
   allowed_oauth_scopes                 = local.escopos_api
   enable_token_revocation              = true
+  prevent_user_existence_errors        = "ENABLED"
   access_token_validity                = 15
   token_validity_units { access_token = "minutes" }
 }

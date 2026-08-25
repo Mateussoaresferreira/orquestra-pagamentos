@@ -25,6 +25,7 @@ class TesteServicoNotificacao {
     @Mock private RepositorioNotificacoes repositorio;
     @Mock private RegistroMensagens mensagens;
     @Mock private ObjectMapper json;
+    @Mock private ServicoWebhooksEmpresa webhooks;
 
     @Test
     void deveAgendarMensagemAdequadaParaCompraConcluida() throws Exception {
@@ -42,7 +43,8 @@ class TesteServicoNotificacao {
                 repositorio,
                 mensagens,
                 json,
-                Clock.fixed(agora, ZoneOffset.UTC));
+                Clock.fixed(agora, ZoneOffset.UTC),
+                webhooks);
 
         servico.agendar(evento);
 
@@ -54,6 +56,7 @@ class TesteServicoNotificacao {
                 "Sua compra foi concluida",
                 "Fluxo financeiro concluido",
                 agora);
+        verify(webhooks).agendar(evento, finalizacao);
     }
 
     @Test
@@ -62,7 +65,7 @@ class TesteServicoNotificacao {
         var evento = evento(idEvento, UUID.randomUUID(), UUID.randomUUID(), "conteudo");
         when(mensagens.iniciar(idEvento, "notificacao-v1")).thenReturn(false);
         var servico = new ServicoNotificacao(
-                repositorio, mensagens, json, Clock.systemUTC());
+                repositorio, mensagens, json, Clock.systemUTC(), webhooks);
 
         servico.agendar(evento);
 
@@ -72,6 +75,9 @@ class TesteServicoNotificacao {
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+        verify(webhooks, never()).agendar(
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any());
     }

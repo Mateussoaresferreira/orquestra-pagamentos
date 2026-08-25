@@ -1,25 +1,22 @@
 package br.com.orquestrapay.payment.service;
 
-import static br.com.orquestrapay.contracts.TiposEventos.PAGAMENTO_AUTORIZADO;
 import static br.com.orquestrapay.contracts.TiposEventos.PAGAMENTO_ESTORNADO;
-import static br.com.orquestrapay.contracts.TiposEventos.PAGAMENTO_RECUSADO;
 
 import java.time.Clock;
 import java.util.UUID;
 
 import br.com.orquestrapay.contracts.EventoSaga;
+import br.com.orquestrapay.contracts.MetodoPagamento;
 import br.com.orquestrapay.contracts.ResultadoPagamento;
 import br.com.orquestrapay.contracts.SolicitacaoCompensacao;
 import br.com.orquestrapay.contracts.SolicitacaoPagamento;
-import br.com.orquestrapay.payment.api.PedidoAutorizacaoProvedor;
-import br.com.orquestrapay.payment.api.PedidoEstornoProvedor;
 import br.com.orquestrapay.payment.api.RespostaPagamento;
+import br.com.orquestrapay.payment.data.RepositorioOperacoesPagamento;
 import br.com.orquestrapay.payment.data.RepositorioPagamentos;
 import br.com.orquestrapay.payment.domain.StatusPagamento;
-import br.com.orquestrapay.payment.integration.ClienteProvedor;
+import br.com.orquestrapay.payment.domain.TipoOperacaoPagamento;
 import br.com.orquestrapay.platform.event.RegistroEventos;
 import br.com.orquestrapay.platform.event.RegistroMensagens;
-import br.com.orquestrapay.platform.security.ProtecaoTokenPagamento;
 import br.com.orquestrapay.platform.web.ExcecaoNegocio;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
@@ -34,28 +31,25 @@ public class ServicoPagamento {
     private static final String CONSUMIDOR = "pagamento-v1";
 
     private final RepositorioPagamentos repositorio;
-    private final ClienteProvedor provedor;
+    private final RepositorioOperacoesPagamento operacoes;
     private final RegistroEventos eventos;
     private final RegistroMensagens mensagens;
     private final ObjectMapper json;
     private final Clock relogio;
-    private final ProtecaoTokenPagamento protecaoToken;
 
     public ServicoPagamento(
             RepositorioPagamentos repositorio,
-            ClienteProvedor provedor,
+            RepositorioOperacoesPagamento operacoes,
             RegistroEventos eventos,
             RegistroMensagens mensagens,
             ObjectMapper json,
-            Clock relogio,
-            ProtecaoTokenPagamento protecaoToken) {
+            Clock relogio) {
         this.repositorio = repositorio;
-        this.provedor = provedor;
+        this.operacoes = operacoes;
         this.eventos = eventos;
         this.mensagens = mensagens;
         this.json = json;
         this.relogio = relogio;
-        this.protecaoToken = protecaoToken;
     }
 
     @Transactional
@@ -67,47 +61,23 @@ public class ServicoPagamento {
 
         UUID idEmpresa = UUID.fromString(evento.getIdEmpresa());
         UUID idCompra = UUID.fromString(evento.getIdCompra());
-        if (repositorio.existePorCompra(idEmpresa, idCompra)) {
-            return;
-        }
-
         SolicitacaoPagamento solicitacao = ler(evento, SolicitacaoPagamento.class);
-        String tokenPagamento = protecaoToken.revelar(solicitacao.tokenPagamento(), idCompra);
-        var resposta = provedor.autorizar(new PedidoAutorizacaoProvedor(
-                idCompra,
-                solicitacao.valorTotal(),
-                solicitacao.moeda(),
-                tokenPagamento));
-        if (resposta == null) {
-            throw new IllegalStateException("O provedor retornou resposta vazia");
-        }
+        validar(solicitacao);
 
-        UUID idPagamento = UUID.randomUUID();
-        StatusPagamento status = resposta.aprovada()
-                ? StatusPagamento.AUTORIZADO
-                : StatusPagamento.RECUSADO;
-        repositorio.adicionar(
-                idPagamento,
+        var agora = relogio.instant();
+        UUID idPagamento = repositorio.adicionarPendente(
                 idEmpresa,
                 idCompra,
                 solicitacao.valorTotal(),
                 solicitacao.moeda(),
-                protecaoToken.calcularImpressao("pagamento", tokenPagamento),
-                status,
-                resposta.idAutorizacao(),
-                resposta.motivo(),
-                relogio.instant());
-        eventos.registrar(
-                resposta.aprovada() ? PAGAMENTO_AUTORIZADO : PAGAMENTO_RECUSADO,
-                idCompra,
-                idEmpresa,
-                idCompra,
-                ORIGEM,
-                new ResultadoPagamento(
-                        idPagamento,
-                        resposta.idAutorizacao(),
-                        resposta.aprovada(),
-                        resposta.motivo()));
+                solicitacao.tokenPagamento(),
+                solicitacao.metodoPagamento(),
+                solicitacao.parcelas(),
+                agora);
+        TipoOperacaoPagamento tipo = solicitacao.metodoPagamento() == MetodoPagamento.PIX
+                ? TipoOperacaoPagamento.CRIAR_PIX
+                : TipoOperacaoPagamento.AUTORIZAR_CARTAO;
+        operacoes.adicionar(idPagamento, tipo, agora);
     }
 
     @Transactional
@@ -128,16 +98,38 @@ public class ServicoPagamento {
             throw new IllegalStateException(
                     "O evento de estorno nao pertence ao pagamento informado");
         }
-        String protocolo = "ja-estornado";
-        if (pagamento.status() == StatusPagamento.AUTORIZADO) {
-            var resposta = provedor.estornar(new PedidoEstornoProvedor(pagamento.idPagamento()));
-            if (resposta == null || !resposta.estornado()) {
-                throw new IllegalStateException("O provedor nao confirmou o estorno");
-            }
-            protocolo = resposta.protocolo();
-            repositorio.marcarEstornado(pagamento.idPagamento(), protocolo, relogio.instant());
+
+        if (pagamento.status() == StatusPagamento.ESTORNADO) {
+            registrarEstornoConcluido(pagamento, "ja-estornado");
+            return;
+        }
+        if (pagamento.status() != StatusPagamento.AUTORIZADO
+                && pagamento.status() != StatusPagamento.ESTORNO_PENDENTE
+                && pagamento.status() != StatusPagamento.ESTORNANDO
+                && pagamento.status() != StatusPagamento.FALHA_TECNICA) {
+            throw new IllegalStateException(
+                    "Somente um pagamento autorizado pode ser estornado");
         }
 
+        var agora = relogio.instant();
+        if (pagamento.status() == StatusPagamento.AUTORIZADO) {
+            repositorio.marcarEstornoPendente(pagamento.idPagamento(), agora);
+        }
+        operacoes.adicionar(pagamento.idPagamento(), TipoOperacaoPagamento.ESTORNAR, agora);
+    }
+
+    @Transactional(readOnly = true)
+    public RespostaPagamento buscar(UUID idEmpresa, UUID idCompra) {
+        return repositorio.buscar(idEmpresa, idCompra)
+                .orElseThrow(() -> new ExcecaoNegocio(
+                        HttpStatus.NOT_FOUND,
+                        "pagamento-nao-encontrado",
+                        "Pagamento nao encontrado para esta empresa"));
+    }
+
+    private void registrarEstornoConcluido(
+            RepositorioPagamentos.Pagamento pagamento,
+            String protocolo) {
         eventos.registrar(
                 PAGAMENTO_ESTORNADO,
                 pagamento.idCompra(),
@@ -148,16 +140,32 @@ public class ServicoPagamento {
                         pagamento.idPagamento(),
                         protocolo,
                         true,
-                        "Pagamento estornado de forma idempotente"));
+                        "Pagamento estornado de forma idempotente",
+                        StatusPagamento.ESTORNADO.name(),
+                        pagamento.metodoPagamento(),
+                        pagamento.provedor(),
+                        pagamento.txid(),
+                        null,
+                        null));
     }
 
-    @Transactional(readOnly = true)
-    public RespostaPagamento buscar(UUID idEmpresa, UUID idCompra) {
-        return repositorio.buscar(idEmpresa, idCompra)
-                .orElseThrow(() -> new ExcecaoNegocio(
-                        HttpStatus.NOT_FOUND,
-                        "pagamento-nao-encontrado",
-                        "Pagamento nao encontrado para esta empresa"));
+    private void validar(SolicitacaoPagamento solicitacao) {
+        if (solicitacao.valorTotal() == null || solicitacao.valorTotal().signum() <= 0) {
+            throw new IllegalArgumentException("O valor do pagamento deve ser positivo");
+        }
+        if (solicitacao.moeda() == null || !solicitacao.moeda().matches("[A-Z]{3}")) {
+            throw new IllegalArgumentException("A moeda do pagamento e invalida");
+        }
+        if (solicitacao.parcelas() < 1 || solicitacao.parcelas() > 12) {
+            throw new IllegalArgumentException("A quantidade de parcelas deve ficar entre 1 e 12");
+        }
+        if (solicitacao.metodoPagamento() == MetodoPagamento.PIX && solicitacao.parcelas() != 1) {
+            throw new IllegalArgumentException("PIX nao permite parcelamento");
+        }
+        if (solicitacao.metodoPagamento() == MetodoPagamento.CARTAO
+                && (solicitacao.tokenPagamento() == null || solicitacao.tokenPagamento().isBlank())) {
+            throw new IllegalArgumentException("O token protegido do cartao e obrigatorio");
+        }
     }
 
     private <T> T ler(EventoSaga evento, Class<T> tipo) {

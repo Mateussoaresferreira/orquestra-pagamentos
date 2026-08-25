@@ -57,7 +57,7 @@ jobs:
           name: registros-ponta-a-ponta
           path: |
             registros-compose.log
-            .auditoria/zap-api.*
+            .auditoria/zap-*.*
           if-no-files-found: warn
           retention-days: 7
       - name: Encerrar ambiente

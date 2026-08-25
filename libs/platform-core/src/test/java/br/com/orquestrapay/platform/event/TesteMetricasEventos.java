@@ -14,14 +14,14 @@ class TesteMetricasEventos {
     void devePublicarRetratoAtualDoOutboxEContadoresOperacionais() {
         var repositorio = mock(RepositorioEventos.class);
         var registro = new SimpleMeterRegistry();
-        var metricas = new MetricasEventos(repositorio, registro, "eventos.teste");
+        var metricas = new MetricasEventos(repositorio, registro);
         when(repositorio.resumir()).thenReturn(new ResumoOutbox(7, 2, 31.5));
 
         metricas.atualizarOutbox();
-        metricas.registrarPublicacao();
-        metricas.registrarFalhaPublicacao();
-        metricas.registrarDescarte();
-        metricas.registrarEnvioDlt();
+        metricas.registrarPublicacao("eventos.teste");
+        metricas.registrarFalhaPublicacao("eventos.teste");
+        metricas.registrarDescarte("eventos.teste");
+        metricas.registrarEnvioDlt("eventos.teste.dlt");
 
         assertThat(registro.get("orquestrapay.outbox.pendentes").gauge().value()).isEqualTo(7);
         assertThat(registro.get("orquestrapay.outbox.quarentena").gauge().value()).isEqualTo(2);
@@ -37,7 +37,7 @@ class TesteMetricasEventos {
     void devePreservarUltimoRetratoQuandoBancoFicarTemporariamenteIndisponivel() {
         var repositorio = mock(RepositorioEventos.class);
         var registro = new SimpleMeterRegistry();
-        var metricas = new MetricasEventos(repositorio, registro, "eventos.teste");
+        var metricas = new MetricasEventos(repositorio, registro);
         when(repositorio.resumir())
                 .thenReturn(new ResumoOutbox(3, 0, 8.0))
                 .thenThrow(new IllegalStateException("Banco indisponivel"));

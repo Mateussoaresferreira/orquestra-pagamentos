@@ -48,6 +48,25 @@ public class RepositorioCompras {
                 .optional();
     }
 
+    public int removerIdempotenciasAnterioresA(Instant limite, int tamanhoLote) {
+        return banco.sql("""
+                        WITH candidatos AS (
+                            SELECT ctid
+                              FROM requisicao_idempotente
+                             WHERE criada_em < :limite
+                             ORDER BY criada_em
+                             LIMIT :tamanhoLote
+                             FOR UPDATE SKIP LOCKED
+                        )
+                        DELETE FROM requisicao_idempotente idempotencia
+                         USING candidatos
+                         WHERE idempotencia.ctid = candidatos.ctid
+                        """)
+                .param("limite", DatasSql.gravar(limite))
+                .param("tamanhoLote", tamanhoLote)
+                .update();
+    }
+
     public void adicionar(
             Compra compra,
             String tokenPagamento,
@@ -56,12 +75,14 @@ public class RepositorioCompras {
         banco.sql("""
                         INSERT INTO compra (
                             id_compra, id_empresa, id_cliente, email_cliente, moeda,
-                            pais, identificador_dispositivo, token_pagamento, valor_total,
-                            status, id_reserva, criado_em, atualizado_em
+                            pais, identificador_dispositivo, metodo_pagamento, parcelas,
+                            token_pagamento, valor_total, status, id_reserva,
+                            criado_em, atualizado_em
                         ) VALUES (
                             :idCompra, :idEmpresa, :idCliente, :emailCliente, :moeda,
-                            :pais, :dispositivo, :tokenPagamento, :valorTotal,
-                            :status, :idReserva, :criadoEm, :atualizadoEm
+                            :pais, :dispositivo, :metodoPagamento, :parcelas,
+                            :tokenPagamento, :valorTotal, :status, :idReserva,
+                            :criadoEm, :atualizadoEm
                         )
                         """)
                 .param("idCompra", compra.idCompra())
@@ -71,8 +92,11 @@ public class RepositorioCompras {
                 .param("moeda", compra.moeda())
                 .param("pais", compra.pais())
                 .param("dispositivo", compra.identificadorDispositivo())
-                .param("tokenPagamento", protecaoToken.proteger(
-                        tokenPagamento, compra.idCompra()))
+                .param("metodoPagamento", compra.metodoPagamento().name())
+                .param("parcelas", compra.parcelas())
+                .param("tokenPagamento", tokenPagamento == null || tokenPagamento.isBlank()
+                        ? null
+                        : protecaoToken.proteger(tokenPagamento, compra.idCompra()))
                 .param("valorTotal", compra.valorTotal())
                 .param("status", compra.status().name())
                 .param("idReserva", compra.idReserva())
@@ -112,7 +136,8 @@ public class RepositorioCompras {
     public Optional<Compra> buscar(UUID idEmpresa, UUID idCompra) {
         return banco.sql("""
                         SELECT id_compra, id_empresa, id_cliente, email_cliente,
-                               moeda, pais, identificador_dispositivo, valor_total,
+                               moeda, pais, identificador_dispositivo,
+                               metodo_pagamento, parcelas, valor_total,
                                status, id_reserva, id_pagamento, id_transacao_contabil,
                                pagamento_estornado, estoque_liberado, motivo,
                                criado_em, atualizado_em
@@ -128,7 +153,8 @@ public class RepositorioCompras {
     public Optional<Compra> buscarParaAtualizacao(UUID idEmpresa, UUID idCompra) {
         return banco.sql("""
                         SELECT id_compra, id_empresa, id_cliente, email_cliente,
-                               moeda, pais, identificador_dispositivo, valor_total,
+                               moeda, pais, identificador_dispositivo,
+                               metodo_pagamento, parcelas, valor_total,
                                status, id_reserva, id_pagamento, id_transacao_contabil,
                                pagamento_estornado, estoque_liberado, motivo,
                                criado_em, atualizado_em
@@ -152,6 +178,62 @@ public class RepositorioCompras {
                 .param("idCompra", idCompra)
                 .query(String.class)
                 .optional();
+    }
+
+    public List<Compra> buscarTravadas(
+            Instant limiteRecebida,
+            Instant limiteEstoqueReservado,
+            Instant limiteRiscoAprovado,
+            Instant limitePagamentoAutorizado,
+            Instant limiteCompensando,
+            int tamanhoLote) {
+        return banco.sql("""
+                        SELECT id_compra, id_empresa, id_cliente, email_cliente,
+                               moeda, pais, identificador_dispositivo,
+                               metodo_pagamento, parcelas, valor_total,
+                               status, id_reserva, id_pagamento, id_transacao_contabil,
+                               pagamento_estornado, estoque_liberado, motivo,
+                               criado_em, atualizado_em
+                          FROM compra
+                         WHERE (status = 'RECEBIDA' AND atualizado_em <= :limiteRecebida)
+                            OR (status = 'ESTOQUE_RESERVADO' AND atualizado_em <= :limiteEstoque)
+                            OR (status = 'RISCO_APROVADO' AND atualizado_em <= :limiteRisco)
+                            OR (status = 'PAGAMENTO_AUTORIZADO' AND atualizado_em <= :limitePagamento)
+                            OR (status = 'COMPENSANDO' AND atualizado_em <= :limiteCompensando)
+                         ORDER BY atualizado_em, id_compra
+                         FOR UPDATE SKIP LOCKED
+                         LIMIT :tamanhoLote
+                        """)
+                .param("limiteRecebida", DatasSql.gravar(limiteRecebida))
+                .param("limiteEstoque", DatasSql.gravar(limiteEstoqueReservado))
+                .param("limiteRisco", DatasSql.gravar(limiteRiscoAprovado))
+                .param("limitePagamento", DatasSql.gravar(limitePagamentoAutorizado))
+                .param("limiteCompensando", DatasSql.gravar(limiteCompensando))
+                .param("tamanhoLote", tamanhoLote)
+                .query((resultado, linha) -> mapearCompra(
+                        resultado,
+                        buscarItens(resultado.getObject("id_compra", UUID.class))))
+                .list();
+    }
+
+    public void registrarReativacaoWatchdog(Compra compra, Instant agora) {
+        banco.sql("""
+                        UPDATE compra
+                           SET atualizado_em = :agora
+                         WHERE id_compra = :idCompra AND status = :status
+                        """)
+                .param("idCompra", compra.idCompra())
+                .param("status", compra.status().name())
+                .param("agora", DatasSql.gravar(agora))
+                .update();
+        adicionarHistorico(
+                compra.idCompra(),
+                "Watchdog reativou a saga",
+                compra.status(),
+                compra.status(),
+                null,
+                "Comandos idempotentes da etapa foram republicados",
+                agora);
     }
 
     public boolean mudarStatus(
@@ -293,6 +375,9 @@ public class RepositorioCompras {
                 resultado.getString("moeda"),
                 resultado.getString("pais"),
                 resultado.getString("identificador_dispositivo"),
+                br.com.orquestrapay.contracts.MetodoPagamento.valueOf(
+                        resultado.getString("metodo_pagamento")),
+                resultado.getInt("parcelas"),
                 resultado.getBigDecimal("valor_total"),
                 StatusCompra.valueOf(resultado.getString("status")),
                 resultado.getObject("id_reserva", UUID.class),
