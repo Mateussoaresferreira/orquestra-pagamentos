@@ -1,0 +1,798 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "API de Notificação | Orquestra de Pagamentos",
+    "description": "Entrega de email, webhooks empresariais e operação das filas duráveis.",
+    "version": "1.0.0",
+    "license": {
+      "name": "MIT",
+      "url": "https://github.com/Mateussoaresferreira/orquestra-pagamentos/blob/main/LICENSE"
+    }
+  },
+  "paths": {
+    "/api/v1/webhooks/configuracao": {
+      "get": {
+        "tags": [
+          "controlador-webhooks-empresa"
+        ],
+        "summary": "Consulta a configuracao sem revelar o segredo HMAC",
+        "operationId": "buscarConfiguracao",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaConfiguracaoWebhook"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "controlador-webhooks-empresa"
+        ],
+        "summary": "Cadastra ou rotaciona a configuracao de webhook da empresa",
+        "operationId": "configurar",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfiguracaoWebhookEntrada"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaConfiguracaoWebhook"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "controlador-webhooks-empresa"
+        ],
+        "summary": "Desabilita o envio de novos webhooks",
+        "operationId": "desabilitar",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/entregas/{idEntrega}/reprocessar": {
+      "post": {
+        "tags": [
+          "controlador-webhooks-empresa"
+        ],
+        "summary": "Reabre uma entrega que terminou em falha definitiva",
+        "operationId": "reprocessar",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idEntrega",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted"
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/quarentena/{idEvento}/reprocessar": {
+      "post": {
+        "tags": [
+          "controlador-quarentena"
+        ],
+        "operationId": "reprocessar_1",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idEvento",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PedidoTratamentoQuarentena"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        },
+        "summary": "Reprocessa um evento em quarentena de forma auditável"
+      }
+    },
+    "/api/v1/admin/quarentena/{idEvento}/descartar": {
+      "post": {
+        "tags": [
+          "controlador-quarentena"
+        ],
+        "operationId": "descartarDefinitivamente",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idEvento",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PedidoTratamentoQuarentena"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        },
+        "summary": "Descarta definitivamente um evento em quarentena"
+      }
+    },
+    "/api/v1/webhooks/entregas": {
+      "get": {
+        "tags": [
+          "controlador-webhooks-empresa"
+        ],
+        "summary": "Lista o historico auditavel de entregas",
+        "operationId": "listar",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "pagina",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 0,
+              "maximum": 100000,
+              "minimum": 0
+            }
+          },
+          {
+            "name": "tamanho",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginaEntregasWebhook"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        }
+      }
+    },
+    "/api/v1/notificacoes/compras/{idCompra}": {
+      "get": {
+        "tags": [
+          "controlador-notificacoes"
+        ],
+        "summary": "Consulta as notificacoes geradas para uma compra",
+        "operationId": "buscar",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idCompra",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RespostaNotificacao"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/quarentena": {
+      "get": {
+        "tags": [
+          "controlador-quarentena"
+        ],
+        "operationId": "listar_1",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "ATIVA"
+            }
+          },
+          {
+            "name": "pagina",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 0
+            }
+          },
+          {
+            "name": "tamanho",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginaQuarentena"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        },
+        "summary": "Lista eventos em quarentena com paginação e filtro de status"
+      }
+    },
+    "/api/v1/admin/quarentena/{idEvento}/auditoria": {
+      "get": {
+        "tags": [
+          "controlador-quarentena"
+        ],
+        "operationId": "listarAuditoria",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idEvento",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AuditoriaQuarentena"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        },
+        "summary": "Lista o histórico de tratamento de um evento em quarentena"
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ConfiguracaoWebhookEntrada": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "maxLength": 2048,
+            "minLength": 0
+          },
+          "segredo": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 32
+          },
+          "eventos": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "ativo": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "eventos",
+          "segredo",
+          "url"
+        ]
+      },
+      "RespostaConfiguracaoWebhook": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "eventos": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true
+          },
+          "ativo": {
+            "type": "boolean"
+          },
+          "atualizadoEm": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PedidoTratamentoQuarentena": {
+        "type": "object",
+        "properties": {
+          "motivo": {
+            "type": "string"
+          }
+        }
+      },
+      "PaginaEntregasWebhook": {
+        "type": "object",
+        "properties": {
+          "itens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RespostaEntregaWebhook"
+            }
+          },
+          "pagina": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "tamanho": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "RespostaEntregaWebhook": {
+        "type": "object",
+        "properties": {
+          "idEntrega": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "idEvento": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "idCompra": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tipoEvento": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "tentativas": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ultimoStatusHttp": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ultimoErro": {
+            "type": "string"
+          },
+          "criadaEm": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "entregueEm": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "falhaDefinitivaEm": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "RespostaNotificacao": {
+        "type": "object",
+        "properties": {
+          "idNotificacao": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "idCompra": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "canal": {
+            "type": "string"
+          },
+          "destinatario": {
+            "type": "string"
+          },
+          "assunto": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "tentativas": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "criadaEm": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "enviadaEm": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "EventoQuarentena": {
+        "type": "object",
+        "properties": {
+          "idEvento": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tipo": {
+            "type": "string"
+          },
+          "versao": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "idCorrelacao": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "idCompra": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "origem": {
+            "type": "string"
+          },
+          "tentativas": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reprocessamentos": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ultimoErro": {
+            "type": "string"
+          },
+          "ocorridoEm": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "descartadoEm": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string"
+          },
+          "resolvidoEm": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "motivoResolucao": {
+            "type": "string"
+          }
+        }
+      },
+      "PaginaQuarentena": {
+        "type": "object",
+        "properties": {
+          "itens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventoQuarentena"
+            }
+          },
+          "pagina": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "tamanho": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "AuditoriaQuarentena": {
+        "type": "object",
+        "properties": {
+          "idAuditoria": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "acao": {
+            "type": "string"
+          },
+          "responsavel": {
+            "type": "string"
+          },
+          "detalhes": {
+            "type": "string"
+          },
+          "tentativasAnteriores": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "erroAnterior": {
+            "type": "string"
+          },
+          "motivo": {
+            "type": "string"
+          },
+          "registradaEm": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "portadorJwt": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Token OAuth2 exigido no perfil cloud; o perfil local desabilita autenticação."
+      }
+    }
+  },
+  "security": [
+    {
+      "portadorJwt": []
+    }
+  ],
+  "servers": [
+    {
+      "url": "http://localhost:8085",
+      "description": "Ambiente local"
+    }
+  ]
+}

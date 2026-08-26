@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.UUID;
 
 import br.com.orquestrapay.platform.web.ExcecaoNegocio;
+import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,6 +28,7 @@ public class ControladorQuarentena {
     }
 
     @GetMapping
+    @Operation(summary = "Lista eventos em quarentena com paginação e filtro de status")
     public PaginaQuarentena listar(
             @RequestHeader("X-Empresa-Id") UUID idEmpresa,
             @RequestParam(defaultValue = "ATIVA") String status,
@@ -42,6 +44,7 @@ public class ControladorQuarentena {
     }
 
     @PostMapping("/{idEvento}/reprocessar")
+    @Operation(summary = "Reprocessa um evento em quarentena de forma auditável")
     public ResponseEntity<Void> reprocessar(
             @RequestHeader("X-Empresa-Id") UUID idEmpresa,
             @PathVariable UUID idEvento,
@@ -58,6 +61,7 @@ public class ControladorQuarentena {
     }
 
     @GetMapping("/{idEvento}/auditoria")
+    @Operation(summary = "Lista o histórico de tratamento de um evento em quarentena")
     public List<AuditoriaQuarentena> listarAuditoria(
             @RequestHeader("X-Empresa-Id") UUID idEmpresa,
             @PathVariable UUID idEvento) {
@@ -65,6 +69,7 @@ public class ControladorQuarentena {
     }
 
     @PostMapping("/{idEvento}/descartar")
+    @Operation(summary = "Descarta definitivamente um evento em quarentena")
     public ResponseEntity<Void> descartarDefinitivamente(
             @RequestHeader("X-Empresa-Id") UUID idEmpresa,
             @PathVariable UUID idEvento,

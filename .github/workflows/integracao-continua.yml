@@ -57,10 +57,18 @@ jobs:
           REDIS_SENHA="$(openssl rand -hex 24)" \
           PROVEDOR_CHAVE_API="$(openssl rand -hex 32)" \
           docker compose config --quiet
-      - name: Validar JSON do Postman e Grafana
+      - name: Validar JSON do Postman, Grafana e OpenAPI
         run: |
-          find postman infra/observability/grafana -name '*.json' -print0 \
+          find postman infra/observability/grafana docs/openapi -name '*.json' -print0 \
             | xargs -0 -n1 jq empty
+          for contrato in docs/openapi/*.json; do
+            jq -e '(.openapi | startswith("3.")) and
+              (.info.title | length > 0) and
+              (.info.version | length > 0) and
+              (.paths | length > 0)' "$contrato" > /dev/null
+          done
+      - name: Validar semântica dos contratos OpenAPI
+        run: npx --yes @redocly/cli@2.47.0 lint "docs/openapi/*.json"
       - name: Validar Helm
         run: docker run --rm -v "$PWD:/trabalho" -w /trabalho alpine/helm@sha256:c6d8088ddb279625a2e1ca3b08b22c18c946d1f65c8b810f28f1597435a1134c lint infra/kubernetes/helm/orquestrapay
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4

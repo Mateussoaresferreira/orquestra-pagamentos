@@ -1,0 +1,729 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "API de Checkout | Orquestra de Pagamentos",
+    "description": "Recepção de compras, idempotência, histórico e coordenação da saga.",
+    "version": "1.0.0",
+    "license": {
+      "name": "MIT",
+      "url": "https://github.com/Mateussoaresferreira/orquestra-pagamentos/blob/main/LICENSE"
+    }
+  },
+  "paths": {
+    "/api/v1/compras": {
+      "post": {
+        "tags": [
+          "controlador-compras"
+        ],
+        "summary": "Inicia uma compra idempotente e sua saga distribuida",
+        "operationId": "iniciar",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "example": "00000000-0000-0000-0000-000000000001"
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "compra-001"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NovaCompra"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Compra aceita para processamento assincrono",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaCompra"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisicao invalida",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaCompra"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflito de idempotencia",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaCompra"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite de admissao atingido",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaCompra"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/quarentena/{idEvento}/reprocessar": {
+      "post": {
+        "tags": [
+          "controlador-quarentena"
+        ],
+        "operationId": "reprocessar",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idEvento",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PedidoTratamentoQuarentena"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        },
+        "summary": "Reprocessa um evento em quarentena de forma auditável"
+      }
+    },
+    "/api/v1/admin/quarentena/{idEvento}/descartar": {
+      "post": {
+        "tags": [
+          "controlador-quarentena"
+        ],
+        "operationId": "descartarDefinitivamente",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idEvento",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PedidoTratamentoQuarentena"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        },
+        "summary": "Descarta definitivamente um evento em quarentena"
+      }
+    },
+    "/api/v1/compras/{idCompra}": {
+      "get": {
+        "tags": [
+          "controlador-compras"
+        ],
+        "summary": "Consulta o estado atual da compra",
+        "operationId": "buscar",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idCompra",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaCompra"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        }
+      }
+    },
+    "/api/v1/compras/{idCompra}/historico": {
+      "get": {
+        "tags": [
+          "controlador-compras"
+        ],
+        "summary": "Explica cada decisao e compensacao da saga",
+        "operationId": "historico",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idCompra",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RegistroHistorico"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/quarentena": {
+      "get": {
+        "tags": [
+          "controlador-quarentena"
+        ],
+        "operationId": "listar",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "ATIVA"
+            }
+          },
+          {
+            "name": "pagina",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 0
+            }
+          },
+          {
+            "name": "tamanho",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginaQuarentena"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        },
+        "summary": "Lista eventos em quarentena com paginação e filtro de status"
+      }
+    },
+    "/api/v1/admin/quarentena/{idEvento}/auditoria": {
+      "get": {
+        "tags": [
+          "controlador-quarentena"
+        ],
+        "operationId": "listarAuditoria",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idEvento",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AuditoriaQuarentena"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        },
+        "summary": "Lista o histórico de tratamento de um evento em quarentena"
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "NovaCompra": {
+        "type": "object",
+        "properties": {
+          "idCliente": {
+            "type": "string",
+            "example": "cliente-001",
+            "maxLength": 120,
+            "minLength": 0,
+            "pattern": "[^\\p{Cc}\\p{Cf}]*"
+          },
+          "emailCliente": {
+            "type": "string",
+            "format": "email",
+            "example": "cliente@exemplo.com",
+            "maxLength": 254,
+            "minLength": 0
+          },
+          "moeda": {
+            "type": "string",
+            "example": "BRL",
+            "minLength": 1
+          },
+          "pais": {
+            "type": "string",
+            "example": "BR",
+            "minLength": 1,
+            "pattern": "[A-Z]{2}"
+          },
+          "identificadorDispositivo": {
+            "type": "string",
+            "example": "dispositivo-001",
+            "maxLength": 160,
+            "minLength": 0,
+            "pattern": "[^\\p{Cc}\\p{Cf}]*"
+          },
+          "tokenPagamento": {
+            "type": "string",
+            "example": "tok_aprovado",
+            "maxLength": 180,
+            "minLength": 0,
+            "pattern": "[^\\p{Cc}\\p{Cf}]*"
+          },
+          "itens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NovoItemCompra"
+            },
+            "maxItems": 50,
+            "minItems": 1
+          },
+          "metodoPagamento": {
+            "type": "string",
+            "default": "CARTAO",
+            "enum": [
+              "CARTAO",
+              "PIX"
+            ],
+            "example": "CARTAO"
+          },
+          "parcelas": {
+            "type": "integer",
+            "format": "int32",
+            "default": 1,
+            "example": 1,
+            "maximum": 12,
+            "minimum": 1
+          }
+        },
+        "required": [
+          "emailCliente",
+          "idCliente",
+          "identificadorDispositivo",
+          "itens",
+          "moeda",
+          "pais"
+        ]
+      },
+      "NovoItemCompra": {
+        "type": "object",
+        "properties": {
+          "idProduto": {
+            "type": "string",
+            "format": "uuid",
+            "example": "11111111-1111-1111-1111-111111111111"
+          },
+          "quantidade": {
+            "type": "integer",
+            "format": "int32",
+            "example": 1,
+            "maximum": 100000
+          },
+          "precoUnitario": {
+            "type": "number",
+            "example": 29.9,
+            "minimum": 0.01
+          }
+        },
+        "required": [
+          "idProduto",
+          "precoUnitario"
+        ]
+      },
+      "RespostaCompra": {
+        "type": "object",
+        "properties": {
+          "idCompra": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "idEmpresa": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "valorTotal": {
+            "type": "number"
+          },
+          "moeda": {
+            "type": "string"
+          },
+          "metodoPagamento": {
+            "type": "string",
+            "enum": [
+              "CARTAO",
+              "PIX"
+            ]
+          },
+          "parcelas": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "motivo": {
+            "type": "string"
+          },
+          "criadoEm": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "atualizadoEm": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PedidoTratamentoQuarentena": {
+        "type": "object",
+        "properties": {
+          "motivo": {
+            "type": "string"
+          }
+        }
+      },
+      "RegistroHistorico": {
+        "type": "object",
+        "properties": {
+          "etapa": {
+            "type": "string"
+          },
+          "statusAnterior": {
+            "type": "string"
+          },
+          "statusAtual": {
+            "type": "string"
+          },
+          "idEvento": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "detalhes": {
+            "type": "string"
+          },
+          "registradoEm": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "EventoQuarentena": {
+        "type": "object",
+        "properties": {
+          "idEvento": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tipo": {
+            "type": "string"
+          },
+          "versao": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "idCorrelacao": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "idCompra": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "origem": {
+            "type": "string"
+          },
+          "tentativas": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reprocessamentos": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ultimoErro": {
+            "type": "string"
+          },
+          "ocorridoEm": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "descartadoEm": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string"
+          },
+          "resolvidoEm": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "motivoResolucao": {
+            "type": "string"
+          }
+        }
+      },
+      "PaginaQuarentena": {
+        "type": "object",
+        "properties": {
+          "itens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventoQuarentena"
+            }
+          },
+          "pagina": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "tamanho": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "AuditoriaQuarentena": {
+        "type": "object",
+        "properties": {
+          "idAuditoria": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "acao": {
+            "type": "string"
+          },
+          "responsavel": {
+            "type": "string"
+          },
+          "detalhes": {
+            "type": "string"
+          },
+          "tentativasAnteriores": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "erroAnterior": {
+            "type": "string"
+          },
+          "motivo": {
+            "type": "string"
+          },
+          "registradaEm": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "portadorJwt": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Token OAuth2 exigido no perfil cloud; o perfil local desabilita autenticação."
+      }
+    }
+  },
+  "security": [
+    {
+      "portadorJwt": []
+    }
+  ],
+  "servers": [
+    {
+      "url": "http://localhost:8080",
+      "description": "Ambiente local"
+    }
+  ]
+}

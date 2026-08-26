@@ -37,6 +37,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <springdoc.version>3.0.3</springdoc.version>
+        <swagger.annotations.version>2.2.47</swagger.annotations.version>
         <testcontainers.version>2.0.5</testcontainers.version>
         <resilience4j.version>2.3.0</resilience4j.version>
         <avro.version>1.12.1</avro.version>

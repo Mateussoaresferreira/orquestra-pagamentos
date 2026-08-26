@@ -129,6 +129,11 @@ lotes concorrentes, mantém relatórios JSON em `target/auditoria-postman` e
 falha quando qualquer requisição ou asserção diverge. Cada cópia cria uma
 empresa própria, portanto não compartilha estoque nem chaves de idempotência.
 
+A coleção possui 37 requisições. No fluxo PIX, `Aguardar cobrança PIX` também
+preenche a aba `Visualization` com QR Code, `txid` e Copia e Cola. As asserções
+validam estrutura EMV, CRC e imagem; os testes Java decodificam o PNG e comparam
+o conteúdo lido com o BR Code produzido.
+
 ## Carga
 
 ```powershell

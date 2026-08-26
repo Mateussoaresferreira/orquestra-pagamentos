@@ -1,0 +1,447 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "API de Risco | Orquestra de Pagamentos",
+    "description": "Consulta da análise de risco e operação das filas do domínio.",
+    "version": "1.0.0",
+    "license": {
+      "name": "MIT",
+      "url": "https://github.com/Mateussoaresferreira/orquestra-pagamentos/blob/main/LICENSE"
+    }
+  },
+  "paths": {
+    "/api/v1/admin/quarentena/{idEvento}/reprocessar": {
+      "post": {
+        "tags": [
+          "controlador-quarentena"
+        ],
+        "operationId": "reprocessar",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idEvento",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PedidoTratamentoQuarentena"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        },
+        "summary": "Reprocessa um evento em quarentena de forma auditável"
+      }
+    },
+    "/api/v1/admin/quarentena/{idEvento}/descartar": {
+      "post": {
+        "tags": [
+          "controlador-quarentena"
+        ],
+        "operationId": "descartarDefinitivamente",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idEvento",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PedidoTratamentoQuarentena"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        },
+        "summary": "Descarta definitivamente um evento em quarentena"
+      }
+    },
+    "/api/v1/analises-risco/compras/{idCompra}": {
+      "get": {
+        "tags": [
+          "controlador-risco"
+        ],
+        "summary": "Consulta os sinais e a pontuacao da analise de risco",
+        "operationId": "buscar",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idCompra",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaAnaliseRisco"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/quarentena": {
+      "get": {
+        "tags": [
+          "controlador-quarentena"
+        ],
+        "operationId": "listar",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "ATIVA"
+            }
+          },
+          {
+            "name": "pagina",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 0
+            }
+          },
+          {
+            "name": "tamanho",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginaQuarentena"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        },
+        "summary": "Lista eventos em quarentena com paginação e filtro de status"
+      }
+    },
+    "/api/v1/admin/quarentena/{idEvento}/auditoria": {
+      "get": {
+        "tags": [
+          "controlador-quarentena"
+        ],
+        "operationId": "listarAuditoria",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idEvento",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AuditoriaQuarentena"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        },
+        "summary": "Lista o histórico de tratamento de um evento em quarentena"
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "PedidoTratamentoQuarentena": {
+        "type": "object",
+        "properties": {
+          "motivo": {
+            "type": "string"
+          }
+        }
+      },
+      "RespostaAnaliseRisco": {
+        "type": "object",
+        "properties": {
+          "idAnalise": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "idCompra": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "pontuacao": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "aprovada": {
+            "type": "boolean"
+          },
+          "sinais": {
+            "type": "string"
+          },
+          "analisadaEm": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "EventoQuarentena": {
+        "type": "object",
+        "properties": {
+          "idEvento": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tipo": {
+            "type": "string"
+          },
+          "versao": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "idCorrelacao": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "idCompra": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "origem": {
+            "type": "string"
+          },
+          "tentativas": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "reprocessamentos": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ultimoErro": {
+            "type": "string"
+          },
+          "ocorridoEm": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "descartadoEm": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string"
+          },
+          "resolvidoEm": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "motivoResolucao": {
+            "type": "string"
+          }
+        }
+      },
+      "PaginaQuarentena": {
+        "type": "object",
+        "properties": {
+          "itens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventoQuarentena"
+            }
+          },
+          "pagina": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "tamanho": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "AuditoriaQuarentena": {
+        "type": "object",
+        "properties": {
+          "idAuditoria": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "acao": {
+            "type": "string"
+          },
+          "responsavel": {
+            "type": "string"
+          },
+          "detalhes": {
+            "type": "string"
+          },
+          "tentativasAnteriores": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "erroAnterior": {
+            "type": "string"
+          },
+          "motivo": {
+            "type": "string"
+          },
+          "registradaEm": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "portadorJwt": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Token OAuth2 exigido no perfil cloud; o perfil local desabilita autenticação."
+      }
+    }
+  },
+  "security": [
+    {
+      "portadorJwt": []
+    }
+  ],
+  "servers": [
+    {
+      "url": "http://localhost:8082",
+      "description": "Ambiente local"
+    }
+  ]
+}

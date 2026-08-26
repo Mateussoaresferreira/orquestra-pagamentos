@@ -30,6 +30,26 @@ Invoke-RestMethod http://localhost:9090/-/ready
 Invoke-RestMethod http://localhost:3010/api/health
 ```
 
+## Acessos locais
+
+| Recurso | Endereço | Credenciais de desenvolvimento |
+|---|---|---|
+| Swagger do checkout | http://localhost:8080/swagger-ui.html | sem login local |
+| Swagger do estoque | http://localhost:8081/swagger-ui.html | sem login local |
+| Swagger do risco | http://localhost:8082/swagger-ui.html | sem login local |
+| Swagger do pagamento | http://localhost:8083/swagger-ui.html | sem login local |
+| Swagger da razão | http://localhost:8084/swagger-ui.html | sem login local |
+| Swagger da notificação | http://localhost:8085/swagger-ui.html | sem login local |
+| Grafana | http://localhost:3010 | `admin` / `orquestrapay` |
+| Prometheus | http://localhost:9090 | sem login local |
+| Apicurio Registry | http://localhost:8088 | sem login local |
+| Mailpit | http://localhost:8025 | sem login local |
+| WireMock | http://localhost:8092/__admin/requests | sem login local |
+
+Os bancos usam `orquestrapay` como usuário e senha somente no Compose. As portas
+`5433` a `5438` pertencem aos seis serviços, e `5439` ao registro de esquemas.
+Não exponha essas credenciais ou o perfil sem autenticação à internet.
+
 ## Logs
 
 ```powershell
