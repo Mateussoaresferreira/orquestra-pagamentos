@@ -23,12 +23,15 @@ import br.com.orquestrapay.platform.event.RegistroEventos;
 import br.com.orquestrapay.platform.event.RegistroMensagens;
 import br.com.orquestrapay.platform.web.ExcecaoNegocio;
 import br.com.orquestrapay.risk.data.RepositorioRisco;
+import br.com.orquestrapay.risk.domain.ExperimentoModelosRisco;
+import br.com.orquestrapay.risk.domain.ModeloRisco;
 import br.com.orquestrapay.risk.domain.PoliticaRisco;
 import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,6 +43,8 @@ class TesteServicoRisco {
     @Mock private RegistroEventos eventos;
     @Mock private RegistroMensagens mensagens;
     @Mock private ObjectMapper json;
+    @Mock private ApplicationEventPublisher publicadorEventosAplicacao;
+    @Mock private MetricasModelosRisco metricas;
 
     @Test
     void deveAprovarCompraSemSinaisDeRisco() throws Exception {
@@ -70,7 +75,10 @@ class TesteServicoRisco {
                 mensagens,
                 json,
                 Clock.fixed(agora, ZoneOffset.UTC),
-                POLITICA);
+                POLITICA,
+                modelosComChallenger(),
+                publicadorEventosAplicacao,
+                metricas);
         servico.analisar(evento);
 
         verify(repositorio).bloquearJanelasDeVelocidade(
@@ -87,6 +95,8 @@ class TesteServicoRisco {
                 0,
                 true,
                 "Nenhum sinal de risco relevante",
+                "regras-transacionais",
+                "1.0.0",
                 agora);
         verify(eventos).registrar(
                 eq(RISCO_APROVADO),
@@ -95,6 +105,8 @@ class TesteServicoRisco {
                 eq(idCompra),
                 eq("servico-risco"),
                 any(ResultadoRisco.class));
+        verify(metricas).registrarAvaliacao(eq("CHAMPION"), any());
+        verify(publicadorEventosAplicacao).publishEvent(any(SolicitacaoAvaliacaoSombra.class));
     }
 
     @Test
@@ -103,7 +115,15 @@ class TesteServicoRisco {
         UUID idCompra = UUID.randomUUID();
         when(repositorio.buscar(idEmpresa, idCompra)).thenReturn(Optional.empty());
         var servico = new ServicoRisco(
-                repositorio, eventos, mensagens, json, Clock.systemUTC(), POLITICA);
+                repositorio,
+                eventos,
+                mensagens,
+                json,
+                Clock.systemUTC(),
+                POLITICA,
+                modelosComChallenger(),
+                publicadorEventosAplicacao,
+                metricas);
 
         var excecao = catchThrowableOfType(
                 ExcecaoNegocio.class,
@@ -137,5 +157,11 @@ class TesteServicoRisco {
                 Duration.ofHours(24),
                 40,
                 70);
+    }
+
+    private static ExperimentoModelosRisco modelosComChallenger() {
+        var champion = new ModeloRisco("regras-transacionais", "1.0.0", POLITICA);
+        var challenger = new ModeloRisco("regras-transacionais", "1.1.0", POLITICA);
+        return new ExperimentoModelosRisco(champion, challenger, 100);
     }
 }

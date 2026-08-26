@@ -5,9 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.UUID;
 
+import br.com.orquestrapay.risk.domain.ClassificacaoComparacaoRisco;
+import br.com.orquestrapay.risk.domain.ResultadoAvaliacaoRisco;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -56,6 +60,8 @@ class TesteIntegracaoRepositorioRisco {
                 0,
                 true,
                 "Sem sinais",
+                "regras-transacionais",
+                "1.0.0",
                 agora.minus(5, ChronoUnit.MINUTES));
         repositorio.adicionar(
                 idEmpresa,
@@ -67,6 +73,8 @@ class TesteIntegracaoRepositorioRisco {
                 25,
                 true,
                 "Sinal moderado",
+                "regras-transacionais",
+                "1.0.0",
                 agora);
 
         assertThat(repositorio.existePorCompra(idEmpresa, primeiraCompra)).isTrue();
@@ -86,8 +94,106 @@ class TesteIntegracaoRepositorioRisco {
                 agora.minus(1, ChronoUnit.DAYS))).isEqualTo(2);
 
         assertThat(repositorio.buscar(idEmpresa, segundaCompra)).get()
-                .extracting(resposta -> resposta.pontuacao(), resposta -> resposta.aprovada())
-                .containsExactly(25, true);
+                .extracting(
+                        resposta -> resposta.pontuacao(),
+                        resposta -> resposta.aprovada(),
+                        resposta -> resposta.modeloDecisao(),
+                        resposta -> resposta.versaoModeloDecisao())
+                .containsExactly(25, true, "regras-transacionais", "1.0.0");
         assertThat(repositorio.buscar(outraEmpresa, segundaCompra)).isEmpty();
+
+        var champion = new ResultadoAvaliacaoRisco(
+                "regras-transacionais", "1.0.0", 25, true, List.of(), "Sinal moderado");
+        var challenger = new ResultadoAvaliacaoRisco(
+                "regras-transacionais", "1.1.0", 75, false, List.of(), "Sinal forte");
+        assertThat(repositorio.adicionarComparacao(
+                        idEmpresa,
+                        segundaCompra,
+                        champion,
+                        challenger,
+                        ClassificacaoComparacaoRisco.CHALLENGER_MAIS_RESTRITIVO,
+                        agora.plusSeconds(1)))
+                .isTrue();
+        assertThat(repositorio.adicionarComparacao(
+                        idEmpresa,
+                        segundaCompra,
+                        champion,
+                        challenger,
+                        ClassificacaoComparacaoRisco.CHALLENGER_MAIS_RESTRITIVO,
+                        agora.plusSeconds(2)))
+                .isFalse();
+
+        assertThat(repositorio.buscarComparacao(idEmpresa, segundaCompra)).get()
+                .extracting(
+                        resposta -> resposta.classificacao(),
+                        resposta -> resposta.diferencaPontuacao())
+                .containsExactly(
+                        ClassificacaoComparacaoRisco.CHALLENGER_MAIS_RESTRITIVO,
+                        50);
+        assertThat(repositorio.buscarComparacao(outraEmpresa, segundaCompra)).isEmpty();
+
+        var resumo = repositorio.resumirComparacoes(
+                idEmpresa,
+                agora.minusSeconds(60),
+                agora.plusSeconds(60));
+        assertThat(resumo.totalComparacoes()).isEqualTo(1);
+        assertThat(resumo.challengerMaisRestritivo()).isEqualTo(1);
+        assertThat(resumo.mediaDiferencaPontuacao()).isEqualByComparingTo("50.0000000000000000");
+    }
+
+    @Test
+    void deveAtualizarBancoExistenteDaVersao500ParaA600() {
+        String esquema = "atualizacao_teste";
+        var fonteDados = new DriverManagerDataSource(
+                BANCO.getJdbcUrl(),
+                BANCO.getUsername(),
+                BANCO.getPassword());
+
+        Flyway.configure()
+                .dataSource(fonteDados)
+                .schemas(esquema)
+                .defaultSchema(esquema)
+                .locations("classpath:db/migration/shared", "classpath:db/migration/service")
+                .target(MigrationVersion.fromVersion("500"))
+                .load()
+                .migrate();
+
+        var banco = JdbcClient.create(fonteDados);
+        assertThat(banco.sql("""
+                        SELECT COUNT(*)
+                          FROM information_schema.tables
+                         WHERE table_schema = :esquema
+                           AND table_name = 'comparacao_modelos_risco'
+                        """)
+                .param("esquema", esquema)
+                .query(Integer.class)
+                .single()).isZero();
+
+        Flyway.configure()
+                .dataSource(fonteDados)
+                .schemas(esquema)
+                .defaultSchema(esquema)
+                .locations("classpath:db/migration/shared", "classpath:db/migration/service")
+                .load()
+                .migrate();
+
+        assertThat(banco.sql("""
+                        SELECT version
+                          FROM atualizacao_teste.flyway_schema_history
+                         WHERE success
+                         ORDER BY installed_rank DESC
+                         LIMIT 1
+                        """)
+                .query(String.class)
+                .single()).isEqualTo("600");
+        assertThat(banco.sql("""
+                        SELECT COUNT(*)
+                          FROM information_schema.tables
+                         WHERE table_schema = :esquema
+                           AND table_name = 'comparacao_modelos_risco'
+                        """)
+                .param("esquema", esquema)
+                .query(Integer.class)
+                .single()).isEqualTo(1);
     }
 }

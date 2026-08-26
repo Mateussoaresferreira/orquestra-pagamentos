@@ -95,6 +95,32 @@ groups:
           resumo: "A conciliacao detectou divergencia entre provedor e pagamento local"
           descricao: "Use a API operacional para investigar e resolver a ocorrencia."
 
+      - alert: FalhaNaAvaliacaoChallenger
+        expr: sum(increase(orquestrapay_risco_avaliacao_sombra_falhas_total[10m])) > 0
+        labels:
+          severidade: alta
+        annotations:
+          resumo: "O modelo challenger falhou durante a avaliacao em sombra"
+          descricao: "A decisao champion permanece valida; investigue o modelo experimental antes de promove-lo."
+
+      - alert: DivergenciaElevadaEntreModelosDeRisco
+        expr: |
+          (
+            sum(increase(orquestrapay_risco_comparacoes_total{
+              classificacao=~"CHALLENGER_MAIS_RESTRITIVO|CHALLENGER_MAIS_PERMISSIVO"
+            }[30m]))
+            /
+            clamp_min(sum(increase(orquestrapay_risco_comparacoes_total[30m])), 1)
+          ) > 0.10
+          and
+          sum(increase(orquestrapay_risco_comparacoes_total[30m])) >= 20
+        for: 10m
+        labels:
+          severidade: media
+        annotations:
+          resumo: "Mais de 10% das decisoes divergem entre champion e challenger"
+          descricao: "Revise sinais, politica e amostra antes de qualquer promocao de modelo."
+
   - name: eventos-orquestrapay
     rules:
       - alert: OutboxComFilaElevada

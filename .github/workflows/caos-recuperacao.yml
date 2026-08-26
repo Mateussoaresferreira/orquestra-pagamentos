@@ -1,0 +1,75 @@
+name: Caos e recuperacao
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 5 * * 6"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: caos-recuperacao-orquestrapay
+  cancel-in-progress: true
+
+jobs:
+  resiliencia:
+    name: Validar falhas e convergencia
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      COMPOSE_BAKE: "false"
+      COMPOSE_PARALLEL_LIMIT: "1"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      - name: Preparar segredos efemeros
+        shell: pwsh
+        run: ./scripts/preparar-segredos-locais.ps1
+
+      - name: Empacotar aplicacoes
+        run: ./mvnw --batch-mode --no-transfer-progress package -DskipTests
+
+      - name: Construir imagens
+        run: >-
+          docker compose -f compose.yml -f compose.caos.yml build
+          simulador-provedor servico-checkout servico-estoque servico-risco
+          servico-pagamento servico-razao servico-notificacao
+
+      - name: Iniciar laboratorio distribuido
+        run: >-
+          docker compose -f compose.yml -f compose.caos.yml up -d --wait
+          toxiproxy servico-checkout servico-estoque servico-risco
+          servico-pagamento servico-razao servico-notificacao
+
+      - name: Executar caos e validar recuperacao
+        shell: pwsh
+        run: ./scripts/testar-caos-recuperacao.ps1
+
+      - name: Coletar logs
+        if: always()
+        run: >-
+          docker compose -f compose.yml -f compose.caos.yml logs --no-color
+          > registros-caos.log
+
+      - name: Publicar evidencias
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: evidencias-caos-recuperacao
+          path: |
+            registros-caos.log
+            .auditoria/caos-recuperacao-*.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Encerrar laboratorio
+        if: always()
+        run: >-
+          docker compose -f compose.yml -f compose.caos.yml down
+          --volumes --remove-orphans

@@ -1,6 +1,7 @@
 # Orquestra de Pagamentos
 
 [![CI](https://github.com/Mateussoaresferreira/orquestra-pagamentos/actions/workflows/integracao-continua.yml/badge.svg)](https://github.com/Mateussoaresferreira/orquestra-pagamentos/actions/workflows/integracao-continua.yml)
+[![Caos](https://github.com/Mateussoaresferreira/orquestra-pagamentos/actions/workflows/caos-recuperacao.yml/badge.svg)](https://github.com/Mateussoaresferreira/orquestra-pagamentos/actions/workflows/caos-recuperacao.yml)
 [![Java 25](https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/25/)
 [![Spring Boot 4.1](https://img.shields.io/badge/Spring%20Boot-4.1.1-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
 [![Apache Kafka 4.1](https://img.shields.io/badge/Apache%20Kafka-4.1.2-231F20?logo=apachekafka&logoColor=white)](https://kafka.apache.org/)
@@ -39,6 +40,7 @@ precisa garantir que:
 | Proteção financeira | Idempotência, partidas dobradas, estorno e conciliação |
 | Integrações | Cartão multi-provedor, PIX assíncrono e webhooks HMAC |
 | Resiliência | Retry limitado, circuit breaker, bulkhead, fallback e quarentena |
+| Evolução de risco | Champion/challenger em sombra, amostragem e comparação auditável |
 | Segurança | JWT/OAuth2, multiempresa, AES-256-GCM, anti-SSRF e limites Redis |
 | Operação | Watchdog, métricas, logs, traces, SLOs e alertas |
 | Escala | Virtual Threads, Kafka particionado, KEDA, Karpenter e RDS Proxy |
@@ -121,7 +123,7 @@ Importe no Postman:
 - `postman/orquestrapay-fluxo-completo.postman_collection.json`;
 - `postman/orquestrapay-ambiente-local.postman_environment.json`.
 
-A coleção contém **37 requisições** distribuídas em preparação, compra aprovada,
+A coleção contém **39 requisições** distribuídas em preparação, compra aprovada,
 falhas controladas, fallback, PIX e auditoria. Execute os fluxos na ordem. Na
 requisição `05 - PIX assíncrono > Aguardar cobrança PIX`, a aba `Visualization`
 mostra o QR Code, o `txid` e o código PIX Copia e Cola.
@@ -142,9 +144,10 @@ Também é possível validar tudo sem abrir o Postman:
 
 | Verificação | Resultado reproduzível |
 |---|---|
-| Java | 204 testes JUnit/Testcontainers e regras JaCoCo aprovados |
-| Postman | 52 chamadas e 55 asserções; bateria paralela com 304 chamadas e 324 asserções, sem falhas |
+| Java | 219 testes JUnit/Testcontainers e regras JaCoCo aprovados |
+| Postman | 63 chamadas e 69 asserções; bateria paralela com 167 chamadas e 180 asserções, sem falhas |
 | Consistência | Seis bancos, estoque, risco, pagamento, razão, filas e outboxes comparados |
+| Caos | Kafka, banco de risco e provedor interrompidos com recuperação sem efeito duplicado |
 | Interrupção | 319 compras aceitas, p95 de 315,68 ms e convergência em 87 s |
 | Segurança | SQL injection, multiempresa, JWT, HMAC, SSRF e idempotência exercitados |
 | Varreduras | ZAP, Semgrep, Gitleaks e Trivy sem achados altos ou críticos no escopo auditado |
@@ -193,14 +196,13 @@ O [índice de documentação](docs/INDICE.md) organiza a leitura por objetivo.
 ## Estado do projeto
 
 O núcleo está concluído e possui CI, análise de segurança, testes reproduzíveis e
-infraestrutura como código. A AWS não é criada automaticamente para evitar
-cobrança inesperada.
+infraestrutura como código. A versão atual inclui comparação champion/challenger
+sem alterar a decisão real e caos automatizado semanal com evidências. A AWS não
+é criada automaticamente para evitar cobrança inesperada.
 
 Evoluções maiores permanecem rastreadas nas issues:
 
-- [modelos de risco champion/challenger](https://github.com/Mateussoaresferreira/orquestra-pagamentos/issues/1);
 - [token vault e HSM/KMS gerenciado](https://github.com/Mateussoaresferreira/orquestra-pagamentos/issues/2);
-- [testes automatizados de caos e recuperação](https://github.com/Mateussoaresferreira/orquestra-pagamentos/issues/3);
 - [recuperação multi-região](https://github.com/Mateussoaresferreira/orquestra-pagamentos/issues/4).
 
 ## Licença

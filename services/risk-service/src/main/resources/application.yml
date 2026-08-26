@@ -60,6 +60,27 @@ orquestrapay:
     intervalo: ${RETENCAO_EVENTOS_INTERVALO:1h}
     atraso-inicial: ${RETENCAO_EVENTOS_ATRASO_INICIAL:5m}
   risco:
+    modelos:
+      nome-champion: ${RISCO_MODELO_CHAMPION:regras-transacionais}
+      versao-champion: ${RISCO_VERSAO_CHAMPION:1.0.0}
+      challenger-habilitado: ${RISCO_CHALLENGER_HABILITADO:true}
+      nome-challenger: ${RISCO_MODELO_CHALLENGER:regras-transacionais}
+      versao-challenger: ${RISCO_VERSAO_CHALLENGER:1.1.0}
+      percentual-amostragem: ${RISCO_CHALLENGER_AMOSTRAGEM:100}
+      politica-challenger:
+        limite-valor-alto: ${RISCO_CHALLENGER_LIMITE_VALOR_ALTO:800.00}
+        limite-valor-muito-alto: ${RISCO_CHALLENGER_LIMITE_VALOR_MUITO_ALTO:4000.00}
+        pontos-valor-alto: ${RISCO_CHALLENGER_PONTOS_VALOR_ALTO:20}
+        pontos-valor-muito-alto: ${RISCO_CHALLENGER_PONTOS_VALOR_MUITO_ALTO:50}
+        pais-base: ${RISCO_CHALLENGER_PAIS_BASE:BR}
+        pontos-pais-divergente: ${RISCO_CHALLENGER_PONTOS_PAIS_DIVERGENTE:30}
+        limite-compras-recentes: ${RISCO_CHALLENGER_LIMITE_COMPRAS_RECENTES:3}
+        janela-compras-recentes: ${RISCO_CHALLENGER_JANELA_COMPRAS_RECENTES:10m}
+        pontos-alta-velocidade: ${RISCO_CHALLENGER_PONTOS_ALTA_VELOCIDADE:40}
+        limite-clientes-por-dispositivo: ${RISCO_CHALLENGER_LIMITE_CLIENTES_DISPOSITIVO:2}
+        janela-dispositivo-compartilhado: ${RISCO_CHALLENGER_JANELA_DISPOSITIVO:24h}
+        pontos-dispositivo-compartilhado: ${RISCO_CHALLENGER_PONTOS_DISPOSITIVO:45}
+        limite-reprovacao: ${RISCO_CHALLENGER_LIMITE_REPROVACAO:65}
     politica:
       limite-valor-alto: ${RISCO_LIMITE_VALOR_ALTO:1000.00}
       limite-valor-muito-alto: ${RISCO_LIMITE_VALOR_MUITO_ALTO:5000.00}

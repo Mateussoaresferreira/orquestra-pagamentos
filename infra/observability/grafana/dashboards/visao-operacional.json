@@ -87,6 +87,18 @@
       "title": "Sagas reativadas pelo watchdog",
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 37},
       "targets": [{"expr": "sum(orquestrapay_sagas_reativadas_total)", "refId": "A"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Comparacoes dos modelos de risco",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 45},
+      "targets": [{"expr": "sum by (classificacao) (rate(orquestrapay_risco_comparacoes_total[5m]))", "legendFormat": "{{classificacao}}", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Falhas do challenger em sombra",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 45},
+      "targets": [{"expr": "sum(orquestrapay_risco_avaliacao_sombra_falhas_total)", "refId": "A"}]
     }
   ],
   "refresh": "10s",

@@ -23,6 +23,19 @@ O motor combina regras independentes de valor, país, velocidade de compras e co
 
 São configuráveis os limites monetários, as pontuações, o país de referência, as janelas temporais e a pontuação de reprovação. A aplicação valida toda a política na inicialização e recusa combinações incoerentes, como um limite “muito alto” menor que o limite “alto”. Assim, uma alteração operacional não exige nova compilação, mas uma regra nova continua exigindo código revisado e testes.
 
+### Champion e challenger
+
+O modelo champion é o único que decide o evento `RISCO_APROVADO` ou
+`RISCO_REPROVADO`. Depois da confirmação da transação, uma amostra determinística
+por `idCompra` também passa pelo challenger. Essa avaliação ocorre em uma nova
+transação, persiste versão, sinais, pontuação e divergência, mas nunca altera a
+compra nem publica evento de negócio.
+
+Falha do challenger é isolada, medida e alertada. As APIs permitem consultar a
+comparação de uma compra e o resumo de até 90 dias por empresa. Não existe
+promoção automática: trocar o champion continua sendo uma mudança explícita de
+configuração, precedida por revisão da amostra e dos testes.
+
 ## Fluxo aprovado
 
 ```mermaid
@@ -217,7 +230,10 @@ Métricas de domínio complementam as métricas HTTP:
 - `orquestrapay_compras_iniciadas_total`;
 - `orquestrapay_compras_concluidas_total`;
 - `orquestrapay_compensacoes_iniciadas_total`;
-- `orquestrapay_compensacoes_concluidas_total`.
+- `orquestrapay_compensacoes_concluidas_total`;
+- `orquestrapay_risco_avaliacoes_total`;
+- `orquestrapay_risco_comparacoes_total`;
+- `orquestrapay_risco_avaliacao_sombra_falhas_total`.
 
 ## Execução local e cloud
 

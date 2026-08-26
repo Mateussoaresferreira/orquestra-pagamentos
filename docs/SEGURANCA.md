@@ -85,6 +85,9 @@ máquina ou mTLS conforme o contrato do adquirente.
 
 ## Proteções de API
 
+- as APIs autenticam por bearer token, não por cookie, não criam sessão e
+  ignoram CSRF somente em `/api/**` e `/actuator/**`; escritas fora dessas rotas
+  continuam exigindo o token CSRF do Spring;
 - validação Bean Validation em todos os corpos de entrada;
 - rejeição de caracteres Unicode de controle ou formatação em identificadores,
   tokens e chaves de idempotência, além de formato empresarial estrito para o

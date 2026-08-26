@@ -33,7 +33,7 @@ detalhamento necessário para desenvolvimento, revisão e operação.
 |---|---|
 | [Checkout](openapi/contrato-checkout.json) | Compras, histórico, administração e saúde pública |
 | [Estoque](openapi/contrato-estoque.json) | Saldo, reserva, liberação e administração |
-| [Risco](openapi/contrato-risco.json) | Resultado da análise e administração |
+| [Risco](openapi/contrato-risco.json) | Resultado, comparação de modelos e administração |
 | [Pagamento](openapi/contrato-pagamento.json) | Cartão, PIX, callbacks, conciliação e divergências |
 | [Razão contábil](openapi/contrato-razao.json) | Lançamentos, recebíveis e administração |
 | [Notificação](openapi/contrato-notificacao.json) | Email, webhook empresarial e administração |
@@ -57,6 +57,7 @@ OpenAPI no mesmo commit.
 - [ADR 0003: Virtual Threads](adr/0003-virtual-threads.md)
 - [ADR 0004: banco por serviço](adr/0004-banco-por-servico.md)
 - [ADR 0005: outbox por polling](adr/0005-publicacao-outbox-por-polling.md)
+- [ADR 0006: champion/challenger de risco](adr/0006-comparacao-modelos-risco.md)
 
 ## Políticas do repositório
 

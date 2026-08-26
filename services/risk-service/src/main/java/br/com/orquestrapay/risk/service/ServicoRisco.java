@@ -4,9 +4,9 @@ import static br.com.orquestrapay.contracts.TiposEventos.RISCO_APROVADO;
 import static br.com.orquestrapay.contracts.TiposEventos.RISCO_REPROVADO;
 
 import java.time.Clock;
-import java.util.List;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 import br.com.orquestrapay.contracts.EventoSaga;
 import br.com.orquestrapay.contracts.ResultadoRisco;
@@ -15,13 +15,15 @@ import br.com.orquestrapay.platform.event.RegistroEventos;
 import br.com.orquestrapay.platform.event.RegistroMensagens;
 import br.com.orquestrapay.platform.web.ExcecaoNegocio;
 import br.com.orquestrapay.risk.api.RespostaAnaliseRisco;
+import br.com.orquestrapay.risk.api.RespostaComparacaoModelosRisco;
+import br.com.orquestrapay.risk.api.RespostaResumoModelosRisco;
 import br.com.orquestrapay.risk.data.RepositorioRisco;
 import br.com.orquestrapay.risk.domain.ContextoRisco;
+import br.com.orquestrapay.risk.domain.ExperimentoModelosRisco;
 import br.com.orquestrapay.risk.domain.PoliticaRisco;
-import br.com.orquestrapay.risk.domain.RegraRisco;
-import br.com.orquestrapay.risk.domain.SinalRisco;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,7 +39,9 @@ public class ServicoRisco {
     private final ObjectMapper json;
     private final Clock relogio;
     private final PoliticaRisco politica;
-    private final List<RegraRisco> regras;
+    private final ExperimentoModelosRisco modelos;
+    private final ApplicationEventPublisher publicadorEventosAplicacao;
+    private final MetricasModelosRisco metricas;
 
     public ServicoRisco(
             RepositorioRisco repositorio,
@@ -45,18 +49,19 @@ public class ServicoRisco {
             RegistroMensagens mensagens,
             ObjectMapper json,
             Clock relogio,
-            PoliticaRisco politica) {
+            PoliticaRisco politica,
+            ExperimentoModelosRisco modelos,
+            ApplicationEventPublisher publicadorEventosAplicacao,
+            MetricasModelosRisco metricas) {
         this.repositorio = repositorio;
         this.eventos = eventos;
         this.mensagens = mensagens;
         this.json = json;
         this.relogio = relogio;
         this.politica = politica;
-        this.regras = List.of(
-                new RegraRisco.RegraValor(politica),
-                new RegraRisco.RegraPais(politica),
-                new RegraRisco.RegraVelocidade(politica),
-                new RegraRisco.RegraDispositivoCompartilhado(politica));
+        this.modelos = modelos;
+        this.publicadorEventosAplicacao = publicadorEventosAplicacao;
+        this.metricas = metricas;
     }
 
     @Transactional
@@ -91,17 +96,7 @@ public class ServicoRisco {
                         solicitacao.idCliente(),
                         agora.minus(politica.janelaDispositivoCompartilhado())));
 
-        List<SinalRisco> sinais = regras.stream()
-                .map(regra -> regra.avaliar(contexto))
-                .flatMap(java.util.Optional::stream)
-                .toList();
-        int pontuacao = Math.min(100, sinais.stream().mapToInt(SinalRisco::pontos).sum());
-        boolean aprovada = pontuacao < politica.limiteReprovacao();
-        String descricao = sinais.isEmpty()
-                ? "Nenhum sinal de risco relevante"
-                : sinais.stream()
-                        .map(sinal -> sinal.codigo() + ": " + sinal.descricao())
-                        .collect(Collectors.joining(" | "));
+        var resultado = modelos.avaliarChampion(contexto);
 
         repositorio.adicionar(
                 idEmpresa,
@@ -110,17 +105,27 @@ public class ServicoRisco {
                 solicitacao.identificadorDispositivo(),
                 solicitacao.valorTotal(),
                 solicitacao.pais(),
-                pontuacao,
-                aprovada,
-                descricao,
+                resultado.pontuacao(),
+                resultado.aprovada(),
+                resultado.descricao(),
+                resultado.modelo(),
+                resultado.versao(),
                 agora);
         eventos.registrar(
-                aprovada ? RISCO_APROVADO : RISCO_REPROVADO,
+                resultado.aprovada() ? RISCO_APROVADO : RISCO_REPROVADO,
                 idCompra,
                 idEmpresa,
                 idCompra,
                 ORIGEM,
-                new ResultadoRisco(aprovada, pontuacao, descricao));
+                new ResultadoRisco(
+                        resultado.aprovada(),
+                        resultado.pontuacao(),
+                        resultado.descricao()));
+        metricas.registrarAvaliacao("CHAMPION", resultado);
+        if (modelos.deveAvaliarChallenger(idCompra)) {
+            publicadorEventosAplicacao.publishEvent(new SolicitacaoAvaliacaoSombra(
+                    idEmpresa, idCompra, contexto, resultado));
+        }
     }
 
     @Transactional(readOnly = true)
@@ -130,6 +135,35 @@ public class ServicoRisco {
                         HttpStatus.NOT_FOUND,
                         "analise-risco-nao-encontrada",
                         "Analise de risco nao encontrada para esta empresa"));
+    }
+
+    @Transactional(readOnly = true)
+    public RespostaComparacaoModelosRisco buscarComparacao(UUID idEmpresa, UUID idCompra) {
+        return repositorio.buscarComparacao(idEmpresa, idCompra)
+                .orElseThrow(() -> new ExcecaoNegocio(
+                        HttpStatus.NOT_FOUND,
+                        "comparacao-modelos-nao-encontrada",
+                        "Comparacao entre modelos nao encontrada para esta empresa"));
+    }
+
+    @Transactional(readOnly = true)
+    public RespostaResumoModelosRisco resumirComparacoes(
+            UUID idEmpresa,
+            Instant desde,
+            Instant ate) {
+        if (desde == null || ate == null || !desde.isBefore(ate)) {
+            throw new ExcecaoNegocio(
+                    HttpStatus.BAD_REQUEST,
+                    "periodo-comparacao-invalido",
+                    "O inicio do periodo deve ser anterior ao fim");
+        }
+        if (Duration.between(desde, ate).compareTo(Duration.ofDays(90)) > 0) {
+            throw new ExcecaoNegocio(
+                    HttpStatus.BAD_REQUEST,
+                    "periodo-comparacao-muito-amplo",
+                    "O periodo de comparacao deve possuir no maximo 90 dias");
+        }
+        return repositorio.resumirComparacoes(idEmpresa, desde, ate);
     }
 
     private SolicitacaoAnaliseRisco ler(EventoSaga evento) {

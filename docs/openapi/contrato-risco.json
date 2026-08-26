@@ -110,6 +110,62 @@
         "summary": "Descarta definitivamente um evento em quarentena"
       }
     },
+    "/api/v1/analises-risco/modelos/resumo": {
+      "get": {
+        "tags": [
+          "controlador-risco"
+        ],
+        "summary": "Resume concordancias e divergencias dos modelos no periodo",
+        "operationId": "resumirModelos",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "desde",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "ate",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaResumoModelosRisco"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        }
+      }
+    },
     "/api/v1/analises-risco/compras/{idCompra}": {
       "get": {
         "tags": [
@@ -144,6 +200,53 @@
               "*/*": {
                 "schema": {
                   "$ref": "#/components/schemas/RespostaAnaliseRisco"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciais ausentes ou inválidas"
+          },
+          "403": {
+            "description": "Escopo ou empresa não autorizados"
+          }
+        }
+      }
+    },
+    "/api/v1/analises-risco/compras/{idCompra}/comparacao-modelos": {
+      "get": {
+        "tags": [
+          "controlador-risco"
+        ],
+        "summary": "Consulta a comparacao auditavel entre champion e challenger",
+        "operationId": "buscarComparacao",
+        "parameters": [
+          {
+            "name": "X-Empresa-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idCompra",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "$ref": "#/components/schemas/RespostaComparacaoModelosRisco"
                 }
               }
             }
@@ -285,6 +388,38 @@
           }
         }
       },
+      "RespostaResumoModelosRisco": {
+        "type": "object",
+        "properties": {
+          "desde": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "totalComparacoes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "decisoesConcordantes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "challengerMaisRestritivo": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "challengerMaisPermissivo": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "mediaDiferencaPontuacao": {
+            "type": "number"
+          }
+        }
+      },
       "RespostaAnaliseRisco": {
         "type": "object",
         "properties": {
@@ -306,7 +441,74 @@
           "sinais": {
             "type": "string"
           },
+          "modeloDecisao": {
+            "type": "string"
+          },
+          "versaoModeloDecisao": {
+            "type": "string"
+          },
           "analisadaEm": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "RespostaComparacaoModelosRisco": {
+        "type": "object",
+        "properties": {
+          "idComparacao": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "idCompra": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "modeloChampion": {
+            "type": "string"
+          },
+          "versaoChampion": {
+            "type": "string"
+          },
+          "pontuacaoChampion": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "aprovadaChampion": {
+            "type": "boolean"
+          },
+          "sinaisChampion": {
+            "type": "string"
+          },
+          "modeloChallenger": {
+            "type": "string"
+          },
+          "versaoChallenger": {
+            "type": "string"
+          },
+          "pontuacaoChallenger": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "aprovadaChallenger": {
+            "type": "boolean"
+          },
+          "sinaisChallenger": {
+            "type": "string"
+          },
+          "classificacao": {
+            "type": "string",
+            "enum": [
+              "DECISAO_CONCORDANTE",
+              "CHALLENGER_MAIS_RESTRITIVO",
+              "CHALLENGER_MAIS_PERMISSIVO"
+            ]
+          },
+          "diferencaPontuacao": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "avaliadaEm": {
             "type": "string",
             "format": "date-time"
           }

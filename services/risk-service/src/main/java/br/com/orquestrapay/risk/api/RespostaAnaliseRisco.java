@@ -9,5 +9,7 @@ public record RespostaAnaliseRisco(
         int pontuacao,
         boolean aprovada,
         String sinais,
+        String modeloDecisao,
+        String versaoModeloDecisao,
         Instant analisadaEm) {
 }

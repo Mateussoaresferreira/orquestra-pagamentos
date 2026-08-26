@@ -9,32 +9,6 @@ $raiz = Split-Path -Parent $PSScriptRoot
 $composeBakeAnterior = $env:COMPOSE_BAKE
 $composeParallelAnterior = $env:COMPOSE_PARALLEL_LIMIT
 
-function Novo-SegredoLocal {
-    param([int] $QuantidadeBytes = 32)
-
-    $bytes = [byte[]]::new($QuantidadeBytes)
-    [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
-    return [Convert]::ToBase64String($bytes)
-}
-
-function Preparar-SegredosLocais {
-    $caminho = Join-Path $raiz '.env'
-    if (Test-Path $caminho) {
-        return
-    }
-
-    $conteudo = @(
-        "CHAVE_CRIPTOGRAFIA_TOKEN=$(Novo-SegredoLocal 32)"
-        "REDIS_SENHA=$(Novo-SegredoLocal 24)"
-        "PROVEDOR_CHAVE_API=$(Novo-SegredoLocal 32)"
-    )
-    [System.IO.File]::WriteAllLines(
-        $caminho,
-        $conteudo,
-        [System.Text.UTF8Encoding]::new($false))
-    Write-Host 'Segredos locais aleatorios criados em .env.' -ForegroundColor DarkGray
-}
-
 function Aguardar-Endereco {
     param(
         [Parameter(Mandatory)]
@@ -66,7 +40,7 @@ function Aguardar-Endereco {
     throw "O componente $Nome nao respondeu em $Endereco dentro do prazo."
 }
 
-Preparar-SegredosLocais
+& "$PSScriptRoot\preparar-segredos-locais.ps1"
 
 if (-not $SemCompilar) {
     & "$PSScriptRoot\compilar.ps1"

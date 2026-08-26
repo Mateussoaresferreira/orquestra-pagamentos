@@ -13,6 +13,26 @@ cd orquestra-pagamentos
 
 Use `-SemObservabilidade` no início quando precisar trabalhar apenas no fluxo de negócio em uma máquina com pouca memória.
 
+## Laboratório de caos
+
+Inicie a bancada com os proxies de falha e execute o ensaio automatizado:
+
+```powershell
+docker compose -f compose.yml -f compose.caos.yml up -d --wait
+.\scripts\testar-caos-recuperacao.ps1
+```
+
+O script sempre reabilita os proxies no bloco de finalização. Para devolver os
+contêineres ao modo normal, com conexões diretas, use:
+
+```powershell
+docker compose -f compose.yml up -d --wait
+docker compose -f compose.yml -f compose.caos.yml rm -sf toxiproxy
+```
+
+Esse procedimento preserva todos os volumes. Em uma máquina com poucos núcleos,
+aguarde a saúde dos serviços ou inicie as aplicações sequencialmente.
+
 ## Componentes saudáveis
 
 O comando abaixo deve mostrar os seis serviços, os dois simuladores de provedor

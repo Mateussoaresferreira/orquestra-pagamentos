@@ -15,6 +15,10 @@
     { "key": "idProdutoB", "value": "30000000-0000-0000-0000-000000000002" },
     { "key": "chaveIdempotencia", "value": "" },
     { "key": "idCompra", "value": "" },
+    { "key": "modeloChampion", "value": "" },
+    { "key": "versaoChampion", "value": "" },
+    { "key": "periodoInicioModelos", "value": "" },
+    { "key": "periodoFimModelos", "value": "" },
     { "key": "idPagamento", "value": "" },
     { "key": "idAutorizacao", "value": "" },
     { "key": "provedorPagamento", "value": "" },
@@ -48,6 +52,8 @@
                   "pm.collectionVariables.set('idEmpresa', pm.variables.replaceIn('{{$guid}}'));",
                   "pm.collectionVariables.set('chaveIdempotencia', 'postman-' + pm.variables.replaceIn('{{$guid}}'));",
                   "pm.collectionVariables.unset('idCompra');",
+                  "pm.collectionVariables.unset('modeloChampion');",
+                  "pm.collectionVariables.unset('versaoChampion');",
                   "pm.collectionVariables.unset('idPagamento');",
                   "pm.collectionVariables.unset('idDivergencia');",
                   "pm.collectionVariables.unset('tentativasSaga');",
@@ -179,8 +185,37 @@
         },
         {
           "name": "Consultar risco",
-          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Risco aprovado', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().aprovada).to.be.true; });"], "type": "text/javascript" } }],
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const risco = pm.response.json();",
+            "pm.test('Risco aprovado pelo champion', () => { pm.response.to.have.status(200); pm.expect(risco.aprovada).to.be.true; pm.expect(risco.modeloDecisao).to.be.a('string').and.not.empty; pm.expect(risco.versaoModeloDecisao).to.be.a('string').and.not.empty; });",
+            "pm.collectionVariables.set('modeloChampion', risco.modeloDecisao);",
+            "pm.collectionVariables.set('versaoChampion', risco.versaoModeloDecisao);"
+          ], "type": "text/javascript" } }],
           "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlRisco}}/api/v1/analises-risco/compras/{{idCompra}}", "host": ["{{urlRisco}}"], "path": ["api", "v1", "analises-risco", "compras", "{{idCompra}}"] } }
+        },
+        {
+          "name": "Comparar modelos de risco",
+          "event": [{ "listen": "test", "script": { "exec": [
+            "const comparacao = pm.response.json();",
+            "pm.test('Comparacao champion/challenger registrada', () => { pm.response.to.have.status(200); pm.expect(comparacao.idCompra).to.eql(pm.collectionVariables.get('idCompra')); pm.expect(comparacao.modeloChampion).to.eql(pm.collectionVariables.get('modeloChampion')); pm.expect(comparacao.versaoChampion).to.eql(pm.collectionVariables.get('versaoChampion')); });",
+            "pm.test('Challenger permaneceu em sombra', () => { pm.expect(comparacao.aprovadaChampion).to.be.true; pm.expect(comparacao.versaoChallenger).not.to.eql(comparacao.versaoChampion); pm.expect(['DECISAO_CONCORDANTE','CHALLENGER_MAIS_RESTRITIVO','CHALLENGER_MAIS_PERMISSIVO']).to.include(comparacao.classificacao); });"
+          ], "type": "text/javascript" } }],
+          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlRisco}}/api/v1/analises-risco/compras/{{idCompra}}/comparacao-modelos", "host": ["{{urlRisco}}"], "path": ["api", "v1", "analises-risco", "compras", "{{idCompra}}", "comparacao-modelos"] } }
+        },
+        {
+          "name": "Resumir experimento de risco",
+          "event": [
+            { "listen": "prerequest", "script": { "exec": [
+              "const agora = Date.now();",
+              "pm.collectionVariables.set('periodoInicioModelos', new Date(agora - 3600000).toISOString());",
+              "pm.collectionVariables.set('periodoFimModelos', new Date(agora + 3600000).toISOString());"
+            ], "type": "text/javascript" } },
+            { "listen": "test", "script": { "exec": [
+              "const resumo = pm.response.json();",
+              "pm.test('Resumo do experimento consistente', () => { pm.response.to.have.status(200); pm.expect(resumo.totalComparacoes).to.be.above(0); pm.expect(resumo.decisoesConcordantes + resumo.challengerMaisRestritivo + resumo.challengerMaisPermissivo).to.eql(resumo.totalComparacoes); });"
+            ], "type": "text/javascript" } }
+          ],
+          "request": { "method": "GET", "header": [{ "key": "X-Empresa-Id", "value": "{{idEmpresa}}" }], "url": { "raw": "{{urlRisco}}/api/v1/analises-risco/modelos/resumo?desde={{periodoInicioModelos}}&ate={{periodoFimModelos}}", "host": ["{{urlRisco}}"], "path": ["api", "v1", "analises-risco", "modelos", "resumo"], "query": [{ "key": "desde", "value": "{{periodoInicioModelos}}" }, { "key": "ate", "value": "{{periodoFimModelos}}" }] } }
         },
         {
           "name": "Consultar pagamento",

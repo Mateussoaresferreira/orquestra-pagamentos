@@ -1,0 +1,20 @@
+[
+  {
+    "name": "kafka",
+    "listen": "0.0.0.0:29092",
+    "upstream": "kafka:29092",
+    "enabled": true
+  },
+  {
+    "name": "banco-risco",
+    "listen": "0.0.0.0:5435",
+    "upstream": "banco-risco:5432",
+    "enabled": true
+  },
+  {
+    "name": "provedor-principal",
+    "listen": "0.0.0.0:8090",
+    "upstream": "simulador-provedor:8080",
+    "enabled": true
+  }
+]

@@ -32,17 +32,17 @@ nova versão deve elevar o piso depois de ampliar testes relevantes.
 | Modulo | Cobertura de linhas medida | Piso do CI |
 |---|---:|---:|
 | Contratos de eventos | 32,1% | 30% |
-| Nucleo da plataforma | 72,6% | 65% |
+| Nucleo da plataforma | 73,3% | 65% |
 | Starter Spring Boot | 72,1% | 65% |
 | Checkout | 38,5% | 35% |
 | Estoque | 56,7% | 50% |
-| Risco | 83,2% | 75% |
+| Risco | 90,3% | 75% |
 | Pagamento | 62,3% | 60% |
 | Razao contabil | 73,3% | 65% |
 | Notificacao | 42,7% | 40% |
-| Simulador de provedor | 56,0% | 50% |
+| Simulador de provedor | 57,0% | 50% |
 
-A execucao integral atual possui 202 testes automatizados, sem falhas, erros ou
+A execucao integral atual possui 219 testes automatizados, sem falhas, erros ou
 testes ignorados. Os percentuais acima sao evidencias do `clean verify` completo,
 nao uma estimativa.
 
@@ -129,10 +129,32 @@ lotes concorrentes, mantém relatórios JSON em `target/auditoria-postman` e
 falha quando qualquer requisição ou asserção diverge. Cada cópia cria uma
 empresa própria, portanto não compartilha estoque nem chaves de idempotência.
 
-A coleção possui 37 requisições. No fluxo PIX, `Aguardar cobrança PIX` também
+A coleção possui 39 requisições. Ela também comprova que o champion permaneceu
+como decisão real e consulta a comparação e o resumo do challenger. No fluxo
+PIX, `Aguardar cobrança PIX` também
 preenche a aba `Visualization` com QR Code, `txid` e Copia e Cola. As asserções
 validam estrutura EMV, CRC e imagem; os testes Java decodificam o PNG e comparam
 o conteúdo lido com o BR Code produzido.
+
+## Caos e recuperação
+
+O laboratório com Toxiproxy interrompe dependências reais da bancada sem
+alterar código de produção:
+
+```powershell
+docker compose -f compose.yml -f compose.caos.yml up -d --wait
+.\scripts\testar-caos-recuperacao.ps1
+```
+
+O ensaio comprova quatro cenários: retenção e drenagem da outbox durante queda do
+Kafka, indisponibilidade e recuperação do banco de risco, resposta ambígua do
+provedor sem cobrança no segundo adquirente e fallback somente após falha
+confirmada como não processada. Cada compra precisa terminar com um pagamento,
+uma transação contábil e uma comparação de risco. Ao final, o script restaura os
+proxies, executa a auditoria dos seis bancos e grava evidência em `.auditoria`.
+
+O workflow `caos-recuperacao.yml` repete o laboratório semanalmente e também
+pode ser acionado manualmente no GitHub Actions.
 
 ## Carga
 

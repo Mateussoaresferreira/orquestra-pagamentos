@@ -25,7 +25,10 @@ O Prometheus carrega `infra/observability/prometheus/alertas.yml` com alertas pa
 - mais de 100 eventos pendentes na outbox por cinco minutos;
 - evento pendente na outbox por mais de dois minutos;
 - evento movido para quarentena ou enviado à DLT;
-- consumidor Kafka atrasado em mais de mil registros por cinco minutos.
+- consumidor Kafka atrasado em mais de mil registros por cinco minutos;
+- falha do challenger durante a avaliação em sombra;
+- divergência entre champion e challenger acima de 10%, após amostra mínima de
+  20 comparações em 30 minutos.
 
 As métricas `orquestrapay_outbox_*` são calculadas em cada banco proprietário. Os
 contadores de publicação, falha, quarentena e DLT são incrementados no ponto em

@@ -29,13 +29,21 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 @EnableConfigurationProperties(PropriedadesSeguranca.class)
 public class ConfiguracaoSeguranca {
 
+    private static final String[] ROTAS_SEM_CSRF = {
+        "/api/**",
+        "/actuator/**"
+    };
+
     @Bean
     @ConditionalOnProperty(
             name = "orquestrapay.seguranca.habilitada",
             havingValue = "false")
     SecurityFilterChain segurancaLocal(HttpSecurity http) throws Exception {
         return http
-                .csrf(configuracao -> configuracao.disable())
+                .csrf(configuracao -> configuracao
+                        .ignoringRequestMatchers(ROTAS_SEM_CSRF))
+                .sessionManagement(configuracao -> configuracao
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(regras -> regras.anyRequest().permitAll())
                 .build();
     }
@@ -85,7 +93,8 @@ public class ConfiguracaoSeguranca {
         var conversor = new JwtAuthenticationConverter();
         conversor.setJwtGrantedAuthoritiesConverter(new ConversorAutoridadesJwt(propriedades));
         return http
-                .csrf(configuracao -> configuracao.disable())
+                .csrf(configuracao -> configuracao
+                        .ignoringRequestMatchers(ROTAS_SEM_CSRF))
                 .sessionManagement(configuracao -> configuracao
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(regras -> regras
