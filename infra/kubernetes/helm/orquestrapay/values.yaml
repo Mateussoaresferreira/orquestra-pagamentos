@@ -25,6 +25,8 @@ global:
   registroEsquemas:
     url: http://registro-esquemas:8080/apis/registry/v3
     imagem: apicurio/apicurio-registry:3.3.1
+    imagemCadastro: curlimages/curl:8.21.0@sha256:7c12af72ceb38b7432ab85e1a265cff6ae58e06f95539d539b654f2cfa64bb13
+    autoCadastrar: false
     bancoUsuario: registro_app
     bancoSenhaChave: banco-registro-senha
   banco:
@@ -144,7 +146,7 @@ servicos:
     replicas: 2
     usaBanco: true
     usaKafka: true
-    concorrenciaKafka: 4
+    concorrenciaKafka: 1
     concorrenciaOutbox: 50
     grupoKafka: checkout-orquestrador-v1
     limiteLagKafka: 100
@@ -188,6 +190,13 @@ servicos:
     limiteLagKafka: 50
     usaSeguranca: true
     usaPoliticaRisco: true
+    ambiente:
+      RISCO_CHALLENGER_AMOSTRAGEM: "10"
+      RISCO_COMPARACOES_RETENCAO_HABILITADA: "true"
+      RISCO_COMPARACOES_RETENCAO_TAMANHO_LOTE: "5000"
+      RISCO_COMPARACOES_RETENCAO_PERIODO: "90d"
+      RISCO_COMPARACOES_RETENCAO_INTERVALO: "1h"
+      RISCO_COMPARACOES_RETENCAO_ATRASO_INICIAL: "15m"
     recursos:
       requisicoes: { cpu: 200m, memoria: 384Mi }
       limites: { cpu: "1", memoria: 640Mi }

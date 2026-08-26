@@ -102,6 +102,19 @@ Para provar que uma versão de contrato incompatível não produz efeito parcial
 .\scripts\testar-versao-evento-dlt.ps1
 ```
 
+O Compose executa `registrador-esquemas` antes dos seis serviços. Esse processo
+consulta o conteúdo antes de escrever e pode ser repetido sem criar versões ou
+erros de unicidade:
+
+```powershell
+docker compose run --rm --no-deps registrador-esquemas
+```
+
+Os serviços operam com `REGISTRO_AUTO_CADASTRAR=false`. No Kubernetes, o Job de
+bootstrap registra os contratos e os init containers aguardam o conteúdo exato
+antes de liberar cada pod. Se o bootstrap falhar, investigue primeiro
+`registro-esquemas`, `banco-registro` e o Job `registrar-esquemas-*`.
+
 ## Entrega de email
 
 O ambiente local usa Mailpit em `http://localhost:8025` e SMTP na porta `1025`.
@@ -133,11 +146,14 @@ A limpeza operacional vem habilitada com políticas conservadoras:
 | outbox publicada | 7 dias |
 | quarentena e auditoria | 365 dias |
 | chave HTTP de idempotência | 90 dias |
+| comparação experimental de risco | 90 dias |
 
-Os prazos e o tamanho do lote são configuráveis por `RETENCAO_EVENTOS_*` e
-`RETENCAO_CHECKOUT_*`. Não reduza a retenção da inbox para menos que a retenção
-do Kafka mais a janela máxima de replay. As métricas
-`orquestrapay_retencao_*_total` mostram quantas linhas foram removidas.
+Os prazos e o tamanho do lote são configuráveis por `RETENCAO_EVENTOS_*`,
+`RETENCAO_CHECKOUT_*` e `RISCO_COMPARACOES_RETENCAO_*`. Não reduza a retenção da
+inbox para menos que a retenção do Kafka mais a janela máxima de replay. As métricas
+`orquestrapay_retencao_*_total` e
+`orquestrapay_risco_retencao_comparacoes_removidas_total` mostram quantas linhas
+foram removidas.
 
 ## Diagnóstico rápido
 
@@ -145,7 +161,7 @@ do Kafka mais a janela máxima de replay. As métricas
 |---|---|
 | API não abre | `docker compose ps` e log do serviço |
 | Saga parada após uma etapa | outbox do produtor, tópico Kafka e inbox do consumidor |
-| Apicurio indisponível | saúde de `banco-registro` e log de `registro-esquemas` |
+| Apicurio indisponível | saúde de `banco-registro`, log de `registro-esquemas` e bootstrap `registrador-esquemas` |
 | Pagamento demorando | circuit breaker, log do provedor e trace distribuído |
 | PIX não conclui | callback do provedor, assinatura HMAC e expiração da cobrança |
 | Fallback não ocorre | use falha técnica; recusa do emissor não deve trocar provedor |

@@ -55,7 +55,7 @@ $aplicacoes = @(
 $infraestrutura = @(
     'banco-checkout', 'banco-estoque', 'banco-risco', 'banco-pagamento',
     'banco-razao', 'banco-notificacao', 'banco-registro', 'redis', 'kafka',
-    'criador-topicos', 'registro-esquemas', 'receptor-webhook'
+    'criador-topicos', 'registro-esquemas', 'registrador-esquemas', 'receptor-webhook'
 )
 $observabilidade = @(
     'tempo', 'loki', 'prometheus', 'coletor-otel', 'alloy', 'grafana'

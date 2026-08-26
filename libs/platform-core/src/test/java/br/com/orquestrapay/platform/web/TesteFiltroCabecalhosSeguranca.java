@@ -38,9 +38,10 @@ class TesteFiltroCabecalhosSeguranca {
     @Test
     void deveRegistrarOFiltroEmTodasAsRotasDaAplicacao() {
         contextoWeb.run(contexto -> {
-            var registro = contexto.getBean(
-                    "filtroCabecalhosSeguranca",
-                    FilterRegistrationBean.class);
+            var bean = contexto.getBean("filtroCabecalhosSeguranca");
+
+            assertThat(bean).isInstanceOf(FilterRegistrationBean.class);
+            var registro = (FilterRegistrationBean<?>) bean;
 
             assertThat(registro.getFilter()).isInstanceOf(FiltroCabecalhosSeguranca.class);
             assertThat(registro.getUrlPatterns()).containsExactly("/*");

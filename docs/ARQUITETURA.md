@@ -219,6 +219,20 @@ O identificador da compra é a chave Kafka. Todos os eventos da mesma saga perma
 
 Os serviços usam Spring MVC e JDBC bloqueante sobre Virtual Threads. Essa escolha aumenta a capacidade de esperar por banco, Kafka ou HTTP sem manter uma thread de plataforma por requisição. Pools de conexão, limites do provedor e consultas continuam sendo recursos finitos e precisam de controle próprio.
 
+## Inicialização dos contratos de eventos
+
+O schema Avro é versionado uma única vez em
+`libs/event-contracts/src/main/avro/evento-saga.avsc`. O CI compara esse arquivo
+com a cópia empacotada pelo Helm. Um Job idempotente procura o conteúdo exato no
+Apicurio e cria somente artefatos ou versões ausentes para os seis tópicos e suas
+DLTs. Os produtores usam `auto-register=false`.
+
+No Kubernetes, um init container em cada serviço consumidor aguarda os 12
+contratos exatos antes de iniciar a JVM. O hash do schema participa do template
+dos pods e do nome do Job, portanto uma alteração de contrato dispara novo
+bootstrap e rollout. Isso remove a corrida de cadastro entre réplicas sem
+permitir que uma aplicação processe eventos com contrato ainda indisponível.
+
 Existe o perfil `platform-threads` para repetir a mesma carga sem Virtual Threads e comparar p95, memória e concorrência.
 
 ## Observabilidade

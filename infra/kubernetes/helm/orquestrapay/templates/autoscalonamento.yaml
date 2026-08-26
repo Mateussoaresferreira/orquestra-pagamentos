@@ -14,6 +14,11 @@ spec:
 {{- end }}
 {{- range .Values.servicos }}
 {{- if and .habilitado .usaKafka }}
+{{- $concorrencia := int (default 1 .concorrenciaKafka) }}
+{{- $consumidoresMaximos := mul (int $.Values.autoscalonamento.maximoReplicas) $concorrencia }}
+{{- if gt $consumidoresMaximos (int $.Values.global.kafka.particoes) }}
+{{- fail (printf "o servico %s pode criar %d consumidores Kafka para apenas %d particoes" .nome $consumidoresMaximos (int $.Values.global.kafka.particoes)) }}
+{{- end }}
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:

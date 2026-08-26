@@ -21,6 +21,8 @@ spec:
       app.kubernetes.io/name: {{ $servico.nome }}
   template:
     metadata:
+      annotations:
+        checksum/contratos-eventos: {{ printf "%s\n%s" ($raiz.Files.Get "files/evento-saga.avsc") ($raiz.Files.Get "files/registrar-esquemas.sh") | sha256sum | quote }}
       labels:
         {{- include "orquestrapay.rotulosServico" (dict "raiz" $raiz "servico" $servico) | nindent 8 }}
     spec:
@@ -37,6 +39,30 @@ spec:
           labelSelector:
             matchLabels:
               app.kubernetes.io/name: {{ $servico.nome }}
+      {{- if and $servico.usaKafka (not $raiz.Values.global.registroEsquemas.autoCadastrar) }}
+      initContainers:
+        - name: aguardar-contratos
+          image: {{ $raiz.Values.global.registroEsquemas.imagemCadastro }}
+          command: ["/bin/sh", "/contratos/registrar-esquemas.sh"]
+          env:
+            - { name: MODO, value: "verificar" }
+            - { name: REGISTRO_ESQUEMAS_URL, value: {{ $raiz.Values.global.registroEsquemas.url | quote }} }
+            - { name: TOPICO_CHECKOUT, value: {{ $raiz.Values.global.kafka.topicos.checkout | quote }} }
+            - { name: TOPICO_ESTOQUE, value: {{ $raiz.Values.global.kafka.topicos.estoque | quote }} }
+            - { name: TOPICO_RISCO, value: {{ $raiz.Values.global.kafka.topicos.risco | quote }} }
+            - { name: TOPICO_PAGAMENTO, value: {{ $raiz.Values.global.kafka.topicos.pagamento | quote }} }
+            - { name: TOPICO_RAZAO, value: {{ $raiz.Values.global.kafka.topicos.razao | quote }} }
+            - { name: TOPICO_NOTIFICACAO, value: {{ $raiz.Values.global.kafka.topicos.notificacao | quote }} }
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: contratos, mountPath: /contratos, readOnly: true }
+      {{- end }}
       containers:
         - name: {{ $servico.chave }}
           image: "{{ $raiz.Values.global.imagens.registro }}/{{ $servico.imagem }}:{{ $raiz.Values.global.imagens.tag }}"
@@ -87,6 +113,7 @@ spec:
             - { name: TOPICO_NOTIFICACAO, value: {{ $raiz.Values.global.kafka.topicos.notificacao | quote }} }
             - { name: TOPICOS_PARTICOES, value: {{ $raiz.Values.global.kafka.particoes | quote }} }
             - { name: REGISTRO_ESQUEMAS_URL, value: {{ $raiz.Values.global.registroEsquemas.url | quote }} }
+            - { name: REGISTRO_AUTO_CADASTRAR, value: {{ $raiz.Values.global.registroEsquemas.autoCadastrar | quote }} }
             - { name: KAFKA_CONCORRENCIA, value: {{ default 1 $servico.concorrenciaKafka | quote }} }
             - { name: ORQUESTRAPAY_EVENTOS_CONCORRENCIA_PUBLICACAO, value: {{ default 20 $servico.concorrenciaOutbox | quote }} }
             {{- if $raiz.Values.global.kafka.autenticacaoIam }}
@@ -193,6 +220,12 @@ spec:
         - name: temporarios
           emptyDir:
             sizeLimit: 128Mi
+        {{- if and $servico.usaKafka (not $raiz.Values.global.registroEsquemas.autoCadastrar) }}
+        - name: contratos
+          configMap:
+            name: contratos-eventos
+            defaultMode: 0444
+        {{- end }}
 ---
 apiVersion: v1
 kind: Service

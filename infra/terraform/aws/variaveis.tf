@@ -93,6 +93,36 @@ variable "classe_banco" {
   default     = "db.t4g.medium"
 }
 
+variable "armazenamento_inicial_banco_gib" {
+  description = "Armazenamento inicial do PostgreSQL em GiB."
+  type        = number
+  default     = 50
+
+  validation {
+    condition = (
+      var.armazenamento_inicial_banco_gib >= 20 &&
+      var.armazenamento_inicial_banco_gib <= 65536 &&
+      floor(var.armazenamento_inicial_banco_gib) == var.armazenamento_inicial_banco_gib
+    )
+    error_message = "O armazenamento inicial do banco deve ser um numero inteiro entre 20 e 65536 GiB."
+  }
+}
+
+variable "armazenamento_maximo_banco_gib" {
+  description = "Teto de autoscaling do armazenamento PostgreSQL em GiB."
+  type        = number
+  default     = 200
+
+  validation {
+    condition = (
+      var.armazenamento_maximo_banco_gib >= 20 &&
+      var.armazenamento_maximo_banco_gib <= 65536 &&
+      floor(var.armazenamento_maximo_banco_gib) == var.armazenamento_maximo_banco_gib
+    )
+    error_message = "O armazenamento maximo do banco deve ser um numero inteiro entre 20 e 65536 GiB."
+  }
+}
+
 variable "habilitar_proxy_banco" {
   description = "Habilita o RDS Proxy para controlar tempestades de conexoes ao PostgreSQL. Obrigatorio em producao."
   type        = bool

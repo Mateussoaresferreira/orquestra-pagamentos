@@ -266,4 +266,23 @@ public class RepositorioRisco {
                         resultado.getBigDecimal("media_diferenca")))
                 .single();
     }
+
+    public int removerComparacoesAnterioresA(Instant limite, int tamanhoLote) {
+        return banco.sql("""
+                        WITH candidatas AS (
+                            SELECT ctid
+                              FROM comparacao_modelos_risco
+                             WHERE avaliada_em < :limite
+                             ORDER BY avaliada_em
+                             LIMIT :tamanhoLote
+                             FOR UPDATE SKIP LOCKED
+                        )
+                        DELETE FROM comparacao_modelos_risco comparacao
+                         USING candidatas
+                         WHERE comparacao.ctid = candidatas.ctid
+                        """)
+                .param("limite", DatasSql.gravar(limite))
+                .param("tamanhoLote", tamanhoLote)
+                .update();
+    }
 }

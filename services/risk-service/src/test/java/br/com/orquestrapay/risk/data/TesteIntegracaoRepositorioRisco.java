@@ -29,6 +29,7 @@ class TesteIntegracaoRepositorioRisco {
             .withUsername("teste")
             .withPassword("teste");
 
+    private static JdbcClient banco;
     private static RepositorioRisco repositorio;
 
     @BeforeAll
@@ -39,7 +40,8 @@ class TesteIntegracaoRepositorioRisco {
                 .locations("classpath:db/migration/shared", "classpath:db/migration/service")
                 .load()
                 .migrate();
-        repositorio = new RepositorioRisco(JdbcClient.create(fonteDados));
+        banco = JdbcClient.create(fonteDados);
+        repositorio = new RepositorioRisco(banco);
     }
 
     @Test
@@ -142,7 +144,44 @@ class TesteIntegracaoRepositorioRisco {
     }
 
     @Test
-    void deveAtualizarBancoExistenteDaVersao500ParaA600() {
+    void deveRemoverComparacoesVencidasEmLotesSemApagarAnalisesOuComparacoesRecentes() {
+        UUID idEmpresa = UUID.randomUUID();
+        UUID compraAntiga = UUID.randomUUID();
+        UUID compraRecente = UUID.randomUUID();
+        Instant agora = Instant.parse("2026-08-25T12:00:00Z");
+        Instant dataAntiga = Instant.parse("2024-01-01T00:00:00Z");
+
+        adicionarAnalise(idEmpresa, compraAntiga, dataAntiga);
+        adicionarAnalise(idEmpresa, compraRecente, agora.minus(1, ChronoUnit.DAYS));
+
+        var champion = new ResultadoAvaliacaoRisco(
+                "regras-transacionais", "1.0.0", 20, true, List.of(), "Sinal moderado");
+        var challenger = new ResultadoAvaliacaoRisco(
+                "regras-transacionais", "1.1.0", 30, true, List.of(), "Sinal moderado");
+        repositorio.adicionarComparacao(
+                idEmpresa,
+                compraAntiga,
+                champion,
+                challenger,
+                ClassificacaoComparacaoRisco.DECISAO_CONCORDANTE,
+                dataAntiga);
+        repositorio.adicionarComparacao(
+                idEmpresa,
+                compraRecente,
+                champion,
+                challenger,
+                ClassificacaoComparacaoRisco.DECISAO_CONCORDANTE,
+                agora.minus(1, ChronoUnit.DAYS));
+
+        assertThat(repositorio.removerComparacoesAnterioresA(
+                agora.minus(90, ChronoUnit.DAYS), 1)).isEqualTo(1);
+        assertThat(repositorio.buscarComparacao(idEmpresa, compraAntiga)).isEmpty();
+        assertThat(repositorio.buscarComparacao(idEmpresa, compraRecente)).isPresent();
+        assertThat(repositorio.buscar(idEmpresa, compraAntiga)).isPresent();
+    }
+
+    @Test
+    void deveAtualizarBancoExistenteDaVersao500ParaA601() {
         String esquema = "atualizacao_teste";
         var fonteDados = new DriverManagerDataSource(
                 BANCO.getJdbcUrl(),
@@ -185,7 +224,7 @@ class TesteIntegracaoRepositorioRisco {
                          LIMIT 1
                         """)
                 .query(String.class)
-                .single()).isEqualTo("600");
+                .single()).isEqualTo("601");
         assertThat(banco.sql("""
                         SELECT COUNT(*)
                           FROM information_schema.tables
@@ -195,5 +234,21 @@ class TesteIntegracaoRepositorioRisco {
                 .param("esquema", esquema)
                 .query(Integer.class)
                 .single()).isEqualTo(1);
+    }
+
+    private void adicionarAnalise(UUID idEmpresa, UUID idCompra, Instant analisadaEm) {
+        repositorio.adicionar(
+                idEmpresa,
+                idCompra,
+                "cliente-retencao",
+                "dispositivo-retencao",
+                new BigDecimal("100.00"),
+                "BR",
+                20,
+                true,
+                "Sinal moderado",
+                "regras-transacionais",
+                "1.0.0",
+                analisadaEm);
     }
 }

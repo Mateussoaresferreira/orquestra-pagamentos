@@ -39,7 +39,7 @@ jobs:
           docker compose up -d --wait
           banco-checkout banco-estoque banco-risco banco-pagamento banco-razao
           banco-notificacao banco-registro redis kafka criador-topicos
-          registro-esquemas simulador-provedor servico-checkout servico-estoque
+          registro-esquemas registrador-esquemas simulador-provedor servico-checkout servico-estoque
           servico-risco servico-pagamento servico-razao servico-notificacao
       - name: Executar cenarios reais
         shell: pwsh

@@ -31,6 +31,12 @@ Multi-AZ, RDS Proxy, Karpenter, classes não burstable, proteção contra exclus
 backups e 365 dias de logs. Os testes em `tests/perfis.tftest.hcl` comprovam os
 dois perfis sem acessar uma conta AWS.
 
+O exemplo de produção reserva 200 GiB inicialmente e permite o autoscaling do
+RDS até 2 TiB. O teto não gera alocação imediata, mas limita até onde o banco
+pode crescer; monitore a tendência e planeje arquivamento ou separação física de
+domínios antes de alcançá-lo. Mudanças de RDS em produção aguardam a janela de
+manutenção em vez de usar aplicação imediata.
+
 ## Pré-requisitos
 
 - AWS CLI autenticada na conta correta;
@@ -190,6 +196,12 @@ IAM. O host administrativo é usado somente pelo Job que cria bancos e usuários
 os serviços e o Apicurio usam o proxy. O arquivo versionado contém apenas
 exemplos.
 
+O chart mantém o autocadastro Avro desligado. Um Job com nome derivado do hash do
+schema publica somente contratos ausentes e os init containers dos serviços
+aguardam a versão exata. Assim, a primeira instalação e os upgrades não expõem
+pods prontos antes da atualização do Apicurio. O Job concluído é removido
+automaticamente depois de dez minutos.
+
 Configure `global.seguranca.clientesId` com os clientes web e técnico,
 `clienteMaquinaId` com o cliente de Client Credentials e
 `empresaClienteMaquina` com o tenant fixo dessa integração. Use a saída
@@ -206,7 +218,7 @@ Secrets Manager.
 
 1. todos os pods prontos e distribuídos entre nós;
 2. migrations concluídas em cada banco lógico;
-3. schemas registrados no Apicurio;
+3. Job `registrar-esquemas-*` concluído e 12 contratos registrados no Apicurio;
 4. autenticação e isolamento entre empresas testados;
 5. uma compra aprovada e uma compensada;
 6. métricas, logs e traces chegando aos destinos;

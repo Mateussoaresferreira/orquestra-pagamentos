@@ -217,6 +217,18 @@ Repita a carga com os mesmos recursos e compare throughput, p95, memória, conex
 
 ## Infraestrutura e contratos
 
+O bootstrap do Apicurio pode ser repetido inclusive enquanto várias réplicas
+atendem tráfego. Ele busca o conteúdo canônico antes de gravar; três execuções
+concorrentes devem terminar sem nova versão nem violação de unicidade no banco:
+
+```powershell
+docker compose run --rm --no-deps registrador-esquemas
+```
+
+O Helm também renderiza um Job por hash do schema e init containers que aguardam
+os 12 artefatos. O CI usa `cmp` para impedir divergência entre o contrato que gera
+as classes Java e a cópia distribuída pelo chart.
+
 ```powershell
 docker compose config --quiet
 helm lint infra/kubernetes/helm/orquestrapay

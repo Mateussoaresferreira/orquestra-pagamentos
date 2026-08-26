@@ -60,6 +60,12 @@ orquestrapay:
     intervalo: ${RETENCAO_EVENTOS_INTERVALO:1h}
     atraso-inicial: ${RETENCAO_EVENTOS_ATRASO_INICIAL:5m}
   risco:
+    retencao-comparacoes:
+      habilitada: ${RISCO_COMPARACOES_RETENCAO_HABILITADA:true}
+      tamanho-lote: ${RISCO_COMPARACOES_RETENCAO_TAMANHO_LOTE:1000}
+      periodo: ${RISCO_COMPARACOES_RETENCAO_PERIODO:90d}
+      intervalo: ${RISCO_COMPARACOES_RETENCAO_INTERVALO:1h}
+      atraso-inicial: ${RISCO_COMPARACOES_RETENCAO_ATRASO_INICIAL:15m}
     modelos:
       nome-champion: ${RISCO_MODELO_CHAMPION:regras-transacionais}
       versao-champion: ${RISCO_VERSAO_CHAMPION:1.0.0}

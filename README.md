@@ -78,7 +78,9 @@ flowchart LR
 
 Cada serviço possui seu próprio PostgreSQL. Kafka transporta os fatos da saga;
 Redis protege cotas e operações compartilhadas. Provedores, Mailpit, WireMock e a
-pilha de observabilidade completam a bancada local.
+pilha de observabilidade completam a bancada local. Um bootstrap idempotente
+publica os contratos Avro antes das aplicações; os serviços apenas consultam o
+Apicurio, evitando corridas de autocadastro quando várias réplicas iniciam juntas.
 
 ## Tecnologias
 
@@ -144,8 +146,8 @@ Também é possível validar tudo sem abrir o Postman:
 
 | Verificação | Resultado reproduzível |
 |---|---|
-| Java | 219 testes JUnit/Testcontainers e regras JaCoCo aprovados |
-| Postman | 63 chamadas e 69 asserções; bateria paralela com 167 chamadas e 180 asserções, sem falhas |
+| Java | 222 testes JUnit/Testcontainers e regras JaCoCo aprovados |
+| Postman | Três fluxos completos em paralelo: 216 chamadas e 223 asserções, sem falhas |
 | Consistência | Seis bancos, estoque, risco, pagamento, razão, filas e outboxes comparados |
 | Caos | Kafka, banco de risco e provedor interrompidos com recuperação sem efeito duplicado |
 | Interrupção | 319 compras aceitas, p95 de 315,68 ms e convergência em 87 s |

@@ -7,8 +7,8 @@ resource "aws_db_instance" "principal" {
   identifier                      = "${local.prefixo}-postgres"
   engine                          = "postgres"
   instance_class                  = var.classe_banco
-  allocated_storage               = 50
-  max_allocated_storage           = 200
+  allocated_storage               = var.armazenamento_inicial_banco_gib
+  max_allocated_storage           = var.armazenamento_maximo_banco_gib
   storage_type                    = "gp3"
   storage_encrypted               = true
   username                        = "orquestrapay"
@@ -24,7 +24,9 @@ resource "aws_db_instance" "principal" {
   deletion_protection             = var.proteger_exclusao
   skip_final_snapshot             = !var.proteger_exclusao
   final_snapshot_identifier       = var.proteger_exclusao ? "${local.prefixo}-final" : null
-  apply_immediately               = true
+  apply_immediately               = lower(var.ambiente) != "producao"
+  maintenance_window              = "sun:03:00-sun:04:00"
+  backup_window                   = "01:00-02:00"
 
   lifecycle {
     precondition {
@@ -39,6 +41,14 @@ resource "aws_db_instance" "principal" {
     precondition {
       condition     = lower(var.ambiente) != "producao" || !startswith(lower(var.classe_banco), "db.t")
       error_message = "Producao nao deve usar classe RDS burstable da familia T."
+    }
+    precondition {
+      condition     = var.armazenamento_maximo_banco_gib >= var.armazenamento_inicial_banco_gib
+      error_message = "O teto de armazenamento do banco nao pode ser menor que o armazenamento inicial."
+    }
+    precondition {
+      condition     = lower(var.ambiente) != "producao" || var.armazenamento_maximo_banco_gib >= 1024
+      error_message = "Producao exige ao menos 1024 GiB como teto de autoscaling do PostgreSQL."
     }
   }
 }

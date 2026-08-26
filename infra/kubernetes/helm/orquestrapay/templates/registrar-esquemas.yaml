@@ -1,0 +1,64 @@
+{{- if not .Values.global.registroEsquemas.autoCadastrar }}
+{{- $assinaturaBootstrap := printf "%s\n%s\n%s\n%s" (.Files.Get "files/evento-saga.avsc") (.Files.Get "files/registrar-esquemas.sh") (toJson .Values.global.kafka.topicos) .Values.global.registroEsquemas.url | sha256sum }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: contratos-eventos
+  labels:
+    {{- include "orquestrapay.rotulos" . | nindent 4 }}
+data:
+  evento-saga.avsc: |-
+{{ .Files.Get "files/evento-saga.avsc" | nindent 4 }}
+  registrar-esquemas.sh: |-
+{{ .Files.Get "files/registrar-esquemas.sh" | nindent 4 }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: registrar-esquemas-{{ $assinaturaBootstrap | trunc 10 }}
+  labels:
+    app.kubernetes.io/name: registrar-esquemas
+    {{- include "orquestrapay.rotulos" . | nindent 4 }}
+spec:
+  activeDeadlineSeconds: 300
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: registrar-esquemas
+        {{- include "orquestrapay.rotulos" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Values.global.contaServico.semAwsNome }}
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: registrar-esquemas
+          image: {{ .Values.global.registroEsquemas.imagemCadastro }}
+          command: ["/bin/sh", "/contratos/registrar-esquemas.sh"]
+          env:
+            - { name: REGISTRO_ESQUEMAS_URL, value: {{ .Values.global.registroEsquemas.url | quote }} }
+            - { name: TOPICO_CHECKOUT, value: {{ .Values.global.kafka.topicos.checkout | quote }} }
+            - { name: TOPICO_ESTOQUE, value: {{ .Values.global.kafka.topicos.estoque | quote }} }
+            - { name: TOPICO_RISCO, value: {{ .Values.global.kafka.topicos.risco | quote }} }
+            - { name: TOPICO_PAGAMENTO, value: {{ .Values.global.kafka.topicos.pagamento | quote }} }
+            - { name: TOPICO_RAZAO, value: {{ .Values.global.kafka.topicos.razao | quote }} }
+            - { name: TOPICO_NOTIFICACAO, value: {{ .Values.global.kafka.topicos.notificacao | quote }} }
+          resources:
+            requests: { cpu: 25m, memory: 32Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: contratos, mountPath: /contratos, readOnly: true }
+      volumes:
+        - name: contratos
+          configMap:
+            name: contratos-eventos
+            defaultMode: 0444
+{{- end }}

@@ -12,7 +12,7 @@ x-service-environment: &service-environment
   CHAVE_CRIPTOGRAFIA_TOKEN: ${CHAVE_CRIPTOGRAFIA_TOKEN:?Execute scripts/iniciar.ps1 para gerar os segredos locais}
   KAFKA_SERVIDORES: kafka:29092
   REGISTRO_ESQUEMAS_URL: http://registro-esquemas:8080/apis/registry/v3
-  REGISTRO_AUTO_CADASTRAR: "true"
+  REGISTRO_AUTO_CADASTRAR: "false"
   TOPICO_CHECKOUT: orquestrapay.checkout.v1
   TOPICO_ESTOQUE: orquestrapay.estoque.v1
   TOPICO_RISCO: orquestrapay.risco.v1
@@ -236,6 +236,24 @@ services:
         condition: service_healthy
     networks: [orquestrapay]
 
+  registrador-esquemas:
+    image: curlimages/curl:8.21.0@sha256:7c12af72ceb38b7432ab85e1a265cff6ae58e06f95539d539b654f2cfa64bb13
+    environment:
+      REGISTRO_ESQUEMAS_URL: http://registro-esquemas:8080/apis/registry/v3
+      TOPICO_CHECKOUT: orquestrapay.checkout.v1
+      TOPICO_ESTOQUE: orquestrapay.estoque.v1
+      TOPICO_RISCO: orquestrapay.risco.v1
+      TOPICO_PAGAMENTO: orquestrapay.pagamento.v1
+      TOPICO_RAZAO: orquestrapay.razao.v1
+      TOPICO_NOTIFICACAO: orquestrapay.notificacao.v1
+    command: ["/bin/sh", "/contratos/registrar-esquemas.sh"]
+    volumes:
+      - ./infra/kubernetes/helm/orquestrapay/files:/contratos:ro
+    depends_on:
+      registro-esquemas:
+        condition: service_started
+    networks: [orquestrapay]
+
   receptor-webhook:
     image: wiremock/wiremock:3.13.2
     command: ["--verbose"]
@@ -326,7 +344,7 @@ services:
       redis: {condition: service_healthy}
       kafka: {condition: service_healthy}
       criador-topicos: {condition: service_completed_successfully}
-      registro-esquemas: {condition: service_started}
+      registrador-esquemas: {condition: service_completed_successfully}
 
   servico-estoque:
     <<: *service-defaults
@@ -346,7 +364,7 @@ services:
       banco-estoque: {condition: service_healthy}
       kafka: {condition: service_healthy}
       criador-topicos: {condition: service_completed_successfully}
-      registro-esquemas: {condition: service_started}
+      registrador-esquemas: {condition: service_completed_successfully}
 
   servico-risco:
     <<: *service-defaults
@@ -366,7 +384,7 @@ services:
       banco-risco: {condition: service_healthy}
       kafka: {condition: service_healthy}
       criador-topicos: {condition: service_completed_successfully}
-      registro-esquemas: {condition: service_started}
+      registrador-esquemas: {condition: service_completed_successfully}
 
   servico-pagamento:
     <<: *service-defaults
@@ -394,7 +412,7 @@ services:
       redis: {condition: service_healthy}
       kafka: {condition: service_healthy}
       criador-topicos: {condition: service_completed_successfully}
-      registro-esquemas: {condition: service_started}
+      registrador-esquemas: {condition: service_completed_successfully}
       simulador-provedor: {condition: service_healthy}
       simulador-provedor-contingencia: {condition: service_healthy}
 
@@ -416,7 +434,7 @@ services:
       banco-razao: {condition: service_healthy}
       kafka: {condition: service_healthy}
       criador-topicos: {condition: service_completed_successfully}
-      registro-esquemas: {condition: service_started}
+      registrador-esquemas: {condition: service_completed_successfully}
 
   servico-notificacao:
     <<: *service-defaults
@@ -440,7 +458,7 @@ services:
       banco-notificacao: {condition: service_healthy}
       kafka: {condition: service_healthy}
       criador-topicos: {condition: service_completed_successfully}
-      registro-esquemas: {condition: service_started}
+      registrador-esquemas: {condition: service_completed_successfully}
       receptor-webhook: {condition: service_started}
       mailpit: {condition: service_healthy}
 

@@ -10,7 +10,8 @@ import org.springframework.context.annotation.Configuration;
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties({
         PropriedadesPoliticaRisco.class,
-        PropriedadesModelosRisco.class
+        PropriedadesModelosRisco.class,
+        PropriedadesRetencaoComparacoesRisco.class
 })
 public class ConfiguracaoPoliticaRisco {
 

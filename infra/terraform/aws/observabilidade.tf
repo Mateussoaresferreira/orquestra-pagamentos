@@ -68,14 +68,17 @@ resource "aws_cloudwatch_metric_alarm" "cpu_banco" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "armazenamento_banco" {
-  alarm_name          = "${local.prefixo}-banco-armazenamento-baixo"
-  alarm_description   = "Menos de 10 GiB livres no PostgreSQL"
-  namespace           = "AWS/RDS"
-  metric_name         = "FreeStorageSpace"
-  statistic           = "Average"
-  period              = 300
-  evaluation_periods  = 2
-  threshold           = 10737418240
+  alarm_name         = "${local.prefixo}-banco-armazenamento-baixo"
+  alarm_description  = "Espaco livre do PostgreSQL abaixo da reserva operacional"
+  namespace          = "AWS/RDS"
+  metric_name        = "FreeStorageSpace"
+  statistic          = "Average"
+  period             = 300
+  evaluation_periods = 2
+  threshold = max(
+    20 * 1024 * 1024 * 1024,
+    var.armazenamento_inicial_banco_gib * 0.20 * 1024 * 1024 * 1024
+  )
   comparison_operator = "LessThanThreshold"
   dimensions          = { DBInstanceIdentifier = aws_db_instance.principal.identifier }
   alarm_actions       = [aws_sns_topic.alertas.arn]

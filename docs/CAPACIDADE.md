@@ -202,10 +202,32 @@ o menor entre:
 - recursos dos pods e velocidade das filas de trabalho;
 - rede, balanceador e cotas da conta cloud.
 
+No perfil Kubernetes, cada pod abre um consumidor por grupo. Assim, 12 réplicas
+ocupam exatamente as 12 partições sem criar consumidores ociosos nem ampliar
+desnecessariamente os rebalanceamentos. O chart falha durante a renderização se
+`maximoReplicas x concorrenciaKafka` ultrapassar a quantidade de partições. Para
+elevar esse teto, aumente partições e réplicas como uma mudança de capacidade
+planejada e execute novamente os ensaios de carga e redelivery.
+
+O challenger de risco usa 10% de amostragem no perfil Kubernetes. A decisão
+champion continua em 100% das compras, enquanto a avaliação experimental reduz
+CPU e escritas adicionais. Comparações com mais de 90 dias são removidas em
+lotes de até 5.000 por execução. Mesmo com o mínimo de duas réplicas, essa
+configuração consegue remover até 240 mil comparações por dia, acima das 100 mil
+geradas pela meta de um milhão de compras/dia. A análise que efetivamente
+decidiu a compra permanece preservada.
+
 Os serviços acessam o PostgreSQL por RDS Proxy com TLS, credenciais por domínio
 e pool central limitado. Isso absorve picos de conexões provocados pela escala
 de pods, mas não aumenta CPU, IOPS ou capacidade transacional do banco. Alarmes
 disparam quando o pool supera 70% ou o empréstimo de conexão passa de 100 ms.
+
+O perfil de produção inicia com 200 GiB e permite autoscaling até 2 TiB; o
+Terraform rejeita um teto inferior a 1 TiB nesse perfil. Esse espaço é margem,
+não retenção infinita. O ambiente de referência mantém os bancos lógicos em uma
+instância RDS compartilhada. Quando CPU, IOPS, WAL ou contenção sustentada
+atingirem o limite medido, o próximo passo é separar pagamento/razão, checkout e
+demais domínios em instâncias próprias, sem mudar os contratos entre serviços.
 
 Acima do pico contratado, WAF, cota global, cota por empresa e admissão local
 devolvem `429` com `Retry-After`. Rejeitar parte da entrada de forma previsível

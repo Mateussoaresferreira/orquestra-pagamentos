@@ -101,6 +101,7 @@ run "producao_sem_saida_controlada_rejeitada" {
     habilitar_karpenter          = true
     tipo_instancia_nos           = "m7i.large"
     classe_banco                 = "db.r7g.large"
+    armazenamento_maximo_banco_gib = 2048
     classe_redis                 = "cache.r7g.large"
     credenciais_proxy_banco = {
       checkout    = "senha-checkout-producao-1234567890"
@@ -135,6 +136,7 @@ run "producao_resiliente_valida" {
     tipo_instancia_nos           = "m7i.large"
     nos_maximos                  = 20
     classe_banco                 = "db.r7g.large"
+    armazenamento_maximo_banco_gib = 2048
     classe_redis                 = "cache.r7g.large"
     credenciais_proxy_banco = {
       checkout    = "senha-checkout-producao-1234567890"
@@ -150,6 +152,11 @@ run "producao_resiliente_valida" {
   assert {
     condition     = aws_db_instance.principal.multi_az
     error_message = "O RDS de producao deve estar em mais de uma zona."
+  }
+
+  assert {
+    condition     = aws_db_instance.principal.max_allocated_storage >= 1024
+    error_message = "O RDS de producao deve possuir margem de autoscaling para o volume planejado."
   }
 
   assert {

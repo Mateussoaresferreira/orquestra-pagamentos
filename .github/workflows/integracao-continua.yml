@@ -67,6 +67,10 @@ jobs:
               (.info.version | length > 0) and
               (.paths | length > 0)' "$contrato" > /dev/null
           done
+      - name: Garantir schema unico entre Java e Helm
+        run: >-
+          cmp libs/event-contracts/src/main/avro/evento-saga.avsc
+          infra/kubernetes/helm/orquestrapay/files/evento-saga.avsc
       - name: Validar semântica dos contratos OpenAPI
         run: npx --yes @redocly/cli@2.47.0 lint "docs/openapi/*.json"
       - name: Validar Helm
