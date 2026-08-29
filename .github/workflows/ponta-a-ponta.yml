@@ -27,6 +27,9 @@ jobs:
           distribution: temurin
           java-version: "25"
           cache: maven
+      - name: Preparar segredos efemeros
+        shell: pwsh
+        run: ./scripts/preparar-segredos-locais.ps1
       - name: Empacotar aplicacoes
         run: ./mvnw --batch-mode --no-transfer-progress package -DskipTests
       - name: Construir imagens
@@ -49,6 +52,7 @@ jobs:
         run: ./scripts/testar-dast.ps1
       - name: Coletar logs
         if: always()
+        continue-on-error: true
         run: docker compose logs --no-color > registros-compose.log
       - name: Publicar diagnostico
         if: always()
@@ -62,4 +66,5 @@ jobs:
           retention-days: 7
       - name: Encerrar ambiente
         if: always()
+        continue-on-error: true
         run: docker compose down --volumes --remove-orphans

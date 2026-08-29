@@ -53,6 +53,7 @@ jobs:
 
       - name: Coletar logs
         if: always()
+        continue-on-error: true
         run: >-
           docker compose -f compose.yml -f compose.caos.yml logs --no-color
           > registros-caos.log
@@ -70,6 +71,7 @@ jobs:
 
       - name: Encerrar laboratorio
         if: always()
+        continue-on-error: true
         run: >-
           docker compose -f compose.yml -f compose.caos.yml down
           --volumes --remove-orphans

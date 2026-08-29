@@ -4,16 +4,16 @@
   "namespace": "br.com.orquestrapay.contracts",
   "doc": "Envelope versionado dos comandos e eventos da saga de compra.",
   "fields": [
-    {"name": "idEvento", "type": "string"},
-    {"name": "tipo", "type": "string"},
+    {"name": "idEvento", "type": {"type": "string", "avro.java.string": "String"}},
+    {"name": "tipo", "type": {"type": "string", "avro.java.string": "String"}},
     {"name": "versao", "type": "int", "default": 1},
-    {"name": "idCorrelacao", "type": "string"},
-    {"name": "idEmpresa", "type": "string"},
-    {"name": "idCompra", "type": "string"},
-    {"name": "origem", "type": "string"},
+    {"name": "idCorrelacao", "type": {"type": "string", "avro.java.string": "String"}},
+    {"name": "idEmpresa", "type": {"type": "string", "avro.java.string": "String"}},
+    {"name": "idCompra", "type": {"type": "string", "avro.java.string": "String"}},
+    {"name": "origem", "type": {"type": "string", "avro.java.string": "String"}},
     {"name": "ocorridoEm", "type": {"type": "long", "logicalType": "timestamp-millis"}},
     {"name": "sequencia", "type": "long"},
-    {"name": "conteudo", "type": "string"},
-    {"name": "traceparent", "type": ["null", "string"], "default": null}
+    {"name": "conteudo", "type": {"type": "string", "avro.java.string": "String"}},
+    {"name": "traceparent", "type": ["null", {"type": "string", "avro.java.string": "String"}], "default": null}
   ]
 }
