@@ -1,10 +1,11 @@
 param(
-    [string] $UrlCheckoutOpenApi = 'http://host.docker.internal:8080/v3/api-docs',
-    [string] $UrlEstoqueOpenApi = 'http://host.docker.internal:8081/v3/api-docs',
-    [string] $UrlRiscoOpenApi = 'http://host.docker.internal:8082/v3/api-docs',
-    [string] $UrlPagamentoOpenApi = 'http://host.docker.internal:8083/v3/api-docs',
-    [string] $UrlRazaoOpenApi = 'http://host.docker.internal:8084/v3/api-docs',
-    [string] $UrlNotificacaoOpenApi = 'http://host.docker.internal:8085/v3/api-docs'
+    [string] $RedeDocker = 'orquestrapay',
+    [string] $UrlCheckoutOpenApi = 'http://servico-checkout:8080/v3/api-docs',
+    [string] $UrlEstoqueOpenApi = 'http://servico-estoque:8080/v3/api-docs',
+    [string] $UrlRiscoOpenApi = 'http://servico-risco:8080/v3/api-docs',
+    [string] $UrlPagamentoOpenApi = 'http://servico-pagamento:8080/v3/api-docs',
+    [string] $UrlRazaoOpenApi = 'http://servico-razao:8080/v3/api-docs',
+    [string] $UrlNotificacaoOpenApi = 'http://servico-notificacao:8080/v3/api-docs'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -35,7 +36,7 @@ foreach ($alvo in $alvos.GetEnumerator()) {
     $nomeRelatorio = "zap-$($alvo.Key).json"
     Write-Host "Executando OWASP ZAP no servico $($alvo.Key)..." -ForegroundColor Cyan
     docker run --rm `
-        --add-host host.docker.internal:host-gateway `
+        --network $RedeDocker `
         -v "${pastaRelatorios}:/zap/wrk/:rw" `
         -v "${raiz}:/zap/orquestrapay:ro" `
         $imagemZap `
