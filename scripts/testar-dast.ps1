@@ -34,6 +34,23 @@ $opcoesZap = @(
 
 foreach ($alvo in $alvos.GetEnumerator()) {
     $nomeRelatorio = "zap-$($alvo.Key).json"
+    $nomesRelatorios = @(
+        $nomeRelatorio
+        "zap-$($alvo.Key).html"
+        "zap-$($alvo.Key).md"
+    )
+    $caminhosRelatorios = @($nomesRelatorios | ForEach-Object {
+        $caminho = Join-Path $pastaRelatorios $_
+        New-Item -ItemType File -Path $caminho -Force | Out-Null
+        $caminho
+    })
+    if ($IsLinux) {
+        chmod 0666 @caminhosRelatorios
+        if ($LASTEXITCODE -ne 0) {
+            throw "Nao foi possivel preparar os arquivos de relatorio do ZAP."
+        }
+    }
+
     Write-Host "Executando OWASP ZAP no servico $($alvo.Key)..." -ForegroundColor Cyan
     docker run --rm `
         --network $RedeDocker `
